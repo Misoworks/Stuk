@@ -1,0 +1,34 @@
+[app]
+id = "dev.stuk.shell-panel"
+name = "Shell Panel"
+version = "0.1.0"
+
+[window.main]
+title = "Shell Panel"
+width = 860
+height = 520
+min_width = 560
+min_height = 360
+material = "luca"
+chrome = "compact"
+
+[platform.staccato]
+command_palette = true
+workspace_sessions = true
+shell_tabs = true
+preferred_mode = "app"
+preferred_material = "luca"
+preferred_chrome = "compact"
+
+[permissions]
+network = false
+notifications = true
+shell_integration = true
+
+[actions.panel.pin]
+label = "Pin Panel"
+shortcut = "Ctrl+P"
+
+[actions.panel.command]
+label = "Open Command Palette"
+shortcut = "Ctrl+K"

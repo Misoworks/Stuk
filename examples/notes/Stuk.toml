@@ -1,0 +1,46 @@
+[app]
+id = "dev.stuk.notes"
+name = "Notes"
+version = "0.1.0"
+
+[window.main]
+title = "Notes"
+width = 1040
+height = 680
+min_width = 720
+min_height = 480
+material = "maris"
+chrome = "compact"
+
+[platform.staccato]
+command_palette = true
+workspace_sessions = true
+shell_tabs = true
+preferred_mode = "browser"
+preferred_material = "maris"
+preferred_chrome = "compact"
+
+[permissions]
+network = false
+filesystem = "documents"
+notifications = false
+
+[actions.notes.new]
+label = "New Note"
+shortcut = "Ctrl+N"
+
+[actions.notes.save]
+label = "Save Note"
+shortcut = "Ctrl+S"
+
+[actions.notes.view.overview]
+label = "Show Overview"
+
+[actions.notes.view.editor]
+label = "Show Editor"
+
+[actions.notes.view.history]
+label = "Show History"
+
+[actions.notes.select]
+label = "Select Note"

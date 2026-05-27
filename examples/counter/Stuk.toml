@@ -1,0 +1,29 @@
+[app]
+id = "dev.stuk.counter"
+name = "Counter"
+version = "0.1.0"
+
+[window.main]
+title = "Counter"
+width = 760
+height = 480
+min_width = 420
+min_height = 320
+material = "maris"
+chrome = "system"
+
+[permissions]
+network = false
+notifications = false
+
+[actions.counter.increment]
+label = "Increment"
+shortcut = "Ctrl+Up"
+
+[actions.counter.decrement]
+label = "Decrement"
+shortcut = "Ctrl+Down"
+
+[actions.counter.reset]
+label = "Reset"
+shortcut = "Ctrl+Backspace"
