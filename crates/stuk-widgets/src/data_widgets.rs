@@ -155,6 +155,10 @@ impl TableRow {
     pub fn text_cell(self, text: impl Into<String>) -> Self {
         self.cell(Text::new(text))
     }
+
+    pub fn numeric_cell(self, text: impl Into<String>) -> Self {
+        self.cell(Text::new(text).tabular_nums())
+    }
 }
 
 impl Default for TableRow {
@@ -321,5 +325,21 @@ fn tree_row(item: &TreeNode, depth: usize) -> Element {
             .disabled(item.disabled)
             .into(),
         None => Text::new(label).muted().into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stuk_style::NumberSpacing;
+
+    #[test]
+    fn numeric_cell_uses_tabular_numbers() {
+        let row = TableRow::new().numeric_cell("1,240");
+        let Element::Text(text) = row.cells.into_iter().next().unwrap() else {
+            panic!("numeric cells should render as text");
+        };
+
+        assert_eq!(text.number_spacing, NumberSpacing::Tabular);
     }
 }

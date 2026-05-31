@@ -25,7 +25,7 @@ pub use controls::{
 };
 pub use data_widgets::{ColorWell, Table, TableColumn, TableRow, Tree, TreeNode};
 pub use feedback::{Dialog, EmptyState, ErrorView, List, Popover, Spinner};
-pub use layout_widgets::{Flex, Grid, Overlay};
+pub use layout_widgets::{Center, Flex, Grid, Overlay};
 pub use media_widgets::{Image, Svg};
 pub use mvp::{IconButton, ScrollView, Sidebar, SplitView, TextField, Toggle, Toolbar};
 pub use navigation::{NavigationItem, NavigationView, SidebarLayout};
@@ -41,8 +41,8 @@ use stuk_core::{
     WindowElement,
 };
 use stuk_layout::{Axis, EdgeInsets, Length};
-use stuk_platform::WindowChrome;
-use stuk_style::{ButtonVariant, Color, Material};
+use stuk_platform::{WindowBackgroundEffect, WindowChrome};
+use stuk_style::{ButtonVariant, Color, Material, NumberSpacing, TextAlign, TextWrap};
 
 #[derive(Clone, Debug)]
 pub struct Window {
@@ -71,9 +71,63 @@ impl Window {
         self
     }
 
+    pub fn glass(mut self) -> Self {
+        self.element.material = Material::Window;
+        self.element.chrome = WindowChrome::System;
+        self.element.transparent = true;
+        self.element.background_effect = WindowBackgroundEffect::Blur;
+        self
+    }
+
+    pub fn transparent(mut self, enabled: bool) -> Self {
+        self.element.transparent = enabled;
+        if !enabled {
+            self.element.background_effect = WindowBackgroundEffect::None;
+        }
+        self
+    }
+
+    pub fn background_effect(mut self, effect: WindowBackgroundEffect) -> Self {
+        self.element.background_effect = effect;
+        if effect.requires_transparency() {
+            self.element.transparent = true;
+        }
+        self
+    }
+
     pub fn size(mut self, width: u32, height: u32) -> Self {
         self.element.width = width;
         self.element.height = height;
+        self
+    }
+
+    pub fn resizable(mut self, resizable: bool) -> Self {
+        self.element.resizable = resizable;
+        self
+    }
+
+    pub fn fixed_size(mut self) -> Self {
+        self.element.resizable = false;
+        self
+    }
+
+    pub fn visible(mut self, visible: bool) -> Self {
+        self.element.visible = visible;
+        self
+    }
+
+    pub fn active(mut self, active: bool) -> Self {
+        self.element.active = active;
+        self
+    }
+
+    pub fn always_on_top(mut self, always_on_top: bool) -> Self {
+        self.element.always_on_top = always_on_top;
+        self
+    }
+
+    pub fn continuous_redraw(mut self, enabled: bool) -> Self {
+        self.element.continuous_redraw = enabled;
         self
     }
 
@@ -108,6 +162,9 @@ impl Text {
                 size: 14.0,
                 line_height: 20.0,
                 color: Color::TEXT,
+                wrap: TextWrap::Normal,
+                number_spacing: NumberSpacing::Proportional,
+                align: TextAlign::Start,
             },
         }
     }
@@ -119,6 +176,9 @@ impl Text {
                 size: 26.0,
                 line_height: 34.0,
                 color: Color::TEXT,
+                wrap: TextWrap::Balance,
+                number_spacing: NumberSpacing::Proportional,
+                align: TextAlign::Start,
             },
         }
     }
@@ -136,6 +196,26 @@ impl Text {
 
     pub fn color(mut self, color: Color) -> Self {
         self.element.color = color;
+        self
+    }
+
+    pub fn balance(mut self) -> Self {
+        self.element.wrap = TextWrap::Balance;
+        self
+    }
+
+    pub fn pretty(mut self) -> Self {
+        self.element.wrap = TextWrap::Pretty;
+        self
+    }
+
+    pub fn tabular_nums(mut self) -> Self {
+        self.element.number_spacing = NumberSpacing::Tabular;
+        self
+    }
+
+    pub fn centered(mut self) -> Self {
+        self.element.align = TextAlign::Center;
         self
     }
 }
@@ -159,6 +239,7 @@ impl Button {
                 variant: ButtonVariant::Secondary,
                 action: None,
                 disabled: false,
+                text_align: stuk_style::ControlTextAlign::Center,
             },
         }
     }
@@ -186,6 +267,16 @@ impl Button {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.element.disabled = disabled;
+        self
+    }
+
+    pub fn align_start(mut self) -> Self {
+        self.element.text_align = stuk_style::ControlTextAlign::Start;
+        self
+    }
+
+    pub fn align_center(mut self) -> Self {
+        self.element.text_align = stuk_style::ControlTextAlign::Center;
         self
     }
 
@@ -453,5 +544,181 @@ impl Divider {
 impl From<Divider> for Element {
     fn from(divider: Divider) -> Self {
         Element::Divider(divider.element)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stuk_core::Element;
+
+    #[test]
+    fn window_builder_produces_window_element() {
+        let window = Window::new()
+            .title("Test")
+            .material(Material::Maris)
+            .chrome(WindowChrome::System);
+        let element: Element = window.into();
+        assert!(matches!(element, Element::Window(_)));
+    }
+
+    #[test]
+    fn window_effect_enables_transparency() {
+        let window = Window::new().background_effect(WindowBackgroundEffect::Mica);
+        let Element::Window(element) = Element::from(window) else {
+            panic!("window builder should produce a window element");
+        };
+
+        assert!(element.transparent);
+        assert_eq!(element.background_effect, WindowBackgroundEffect::Mica);
+    }
+
+    #[test]
+    fn glass_window_sets_coherent_defaults() {
+        let window = Window::new().glass();
+        let Element::Window(element) = Element::from(window) else {
+            panic!("window builder should produce a window element");
+        };
+
+        assert!(element.transparent);
+        assert_eq!(element.background_effect, WindowBackgroundEffect::Blur);
+        assert_eq!(element.chrome, WindowChrome::System);
+        assert_eq!(element.material, Material::Window);
+    }
+
+    #[test]
+    fn disabling_window_transparency_clears_effect() {
+        let window = Window::new()
+            .background_effect(WindowBackgroundEffect::Acrylic)
+            .transparent(false);
+        let Element::Window(element) = Element::from(window) else {
+            panic!("window builder should produce a window element");
+        };
+
+        assert!(!element.transparent);
+        assert_eq!(element.background_effect, WindowBackgroundEffect::None);
+    }
+
+    #[test]
+    fn text_builder_produces_text_element() {
+        let text = Text::new("hello");
+        let element: Element = text.into();
+        assert!(matches!(element, Element::Text(_)));
+    }
+
+    #[test]
+    fn text_title_produces_text_element() {
+        let text = Text::title("Heading");
+        let element: Element = text.into();
+        assert!(matches!(element, Element::Text(_)));
+    }
+
+    #[test]
+    fn button_primary_produces_button() {
+        let button = Button::primary("Save");
+        let element: Element = button.into();
+        assert!(matches!(element, Element::Button(_)));
+    }
+
+    #[test]
+    fn button_variants_all_build() {
+        let _element: Element = Button::primary("OK").into();
+        let _element: Element = Button::secondary("Cancel").into();
+        let _element: Element = Button::ghost("Skip").into();
+        let _element: Element = Button::destructive("Delete").into();
+    }
+
+    #[test]
+    fn vstack_accumulates_children() {
+        let stack = VStack::new()
+            .spacing(8.0)
+            .padding(12.0)
+            .child(Text::new("a"))
+            .child(Text::new("b"));
+        let _element: Element = stack.into();
+    }
+
+    #[test]
+    fn hstack_accumulates_children() {
+        let stack = HStack::new()
+            .spacing(10.0)
+            .child(Button::new("OK"))
+            .child(Spacer::new())
+            .child(Button::secondary("Cancel"));
+        let _element: Element = stack.into();
+    }
+
+    #[test]
+    fn split_view_builds() {
+        let split = SplitView::new(
+            Sidebar::new().child(Text::new("sidebar")),
+            VStack::new().child(Text::new("main")),
+        )
+        .resizable(true);
+        let _element: Element = split.into();
+    }
+
+    #[test]
+    fn toggle_builds() {
+        let toggle = Toggle::new("Sync", true).action("sync.toggle");
+        let _element: Element = toggle.into();
+    }
+
+    #[test]
+    fn text_field_builder() {
+        let field = TextField::new("").label("Name").placeholder("Enter name");
+        let _element: Element = field.into();
+    }
+
+    #[test]
+    fn scroll_view_builder() {
+        let scroll = ScrollView::new(Text::new("content")).height(200.0);
+        let _element: Element = scroll.into();
+    }
+
+    #[test]
+    fn divider_builds() {
+        let h = Divider::horizontal();
+        let v = Divider::vertical();
+        let _h_elem: Element = h.into();
+        let _v_elem: Element = v.into();
+    }
+
+    #[test]
+    fn icon_button_builds() {
+        let ib = IconButton::new("X", "Close").action("app.close");
+        let _element: Element = ib.into();
+    }
+
+    #[test]
+    fn empty_state_builds() {
+        let es = EmptyState::new("Nothing here").message("Try creating something");
+        let _element: Element = es.into();
+    }
+
+    #[test]
+    fn frame_sizes() {
+        let frame = Frame::new(Text::new("content")).width(400.0).height(300.0);
+        let element: Element = frame.into();
+        assert!(matches!(element, Element::Frame(_)));
+    }
+
+    #[test]
+    fn spacer_fills() {
+        let _element: Element = Spacer::new().into();
+    }
+
+    #[test]
+    fn muted_text_is_still_text() {
+        let text = Text::new("muted").muted();
+        let element: Element = text.into();
+        assert!(matches!(element, Element::Text(_)));
+    }
+
+    #[test]
+    fn sized_text_is_still_text() {
+        let text = Text::new("sized").size(20.0);
+        let element: Element = text.into();
+        assert!(matches!(element, Element::Text(_)));
     }
 }

@@ -132,12 +132,18 @@ impl ProgressBar {
                 label: None,
                 value,
                 max,
+                color: Color::ACCENT,
             },
         }
     }
 
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.element.label = Some(label.into());
+        self
+    }
+
+    pub fn color(mut self, color: Color) -> Self {
+        self.element.color = color;
         self
     }
 }

@@ -43,6 +43,15 @@ impl Image {
         self.element.opacity = opacity.clamp(0.0, 1.0);
         self
     }
+
+    pub fn outline(mut self, enabled: bool) -> Self {
+        self.element.outline = enabled;
+        self
+    }
+
+    pub fn without_outline(self) -> Self {
+        self.outline(false)
+    }
 }
 
 impl From<Image> for Element {
@@ -95,6 +104,11 @@ impl Svg {
 
     pub fn opacity(mut self, opacity: f32) -> Self {
         self.element.opacity = opacity.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn outline(mut self, enabled: bool) -> Self {
+        self.element.outline = enabled;
         self
     }
 }

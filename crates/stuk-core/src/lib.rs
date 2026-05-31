@@ -5,6 +5,9 @@ mod async_state;
 mod control_accessibility;
 mod control_elements;
 mod control_render;
+mod control_render_extras;
+#[cfg(test)]
+mod control_render_tests;
 mod element;
 mod element_conversions;
 mod focus;
@@ -15,13 +18,16 @@ mod lower;
 mod measure;
 mod media_elements;
 mod media_render;
+mod navigation;
 mod option_render;
+mod pagination;
 mod reconcile;
 mod session;
 mod state;
 mod surface_elements;
 mod surface_render;
 mod task;
+mod window_chrome_render;
 
 pub use accessibility_validation::{
     AccessibilityDiagnostic, AccessibilityDiagnosticKind, AccessibilityDiagnosticLevel,
@@ -48,6 +54,11 @@ pub use layout_elements::{
 pub use list_elements::{VirtualListElement, VirtualListRowElement};
 pub use measure::measure_element;
 pub use media_elements::{MediaElement, MediaSource};
+pub use navigation::{NavigationSplitState, NavigationStack, PageId, RouteState, Screen};
+pub use pagination::{
+    Page, PageCursor, PaginatedResource, PaginatedResourcePhase, PaginatedResourceSnapshot,
+    PaginationCxExt, PaginationMode, cursor_resource, paginated_resource,
+};
 pub use reconcile::{ReconcileOp, reconcile};
 pub use session::{SessionCx, StaccatoCx};
 pub use state::{Component, ComponentState, Signal, signal};

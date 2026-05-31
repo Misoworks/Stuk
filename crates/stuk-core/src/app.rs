@@ -8,6 +8,9 @@ use thiserror::Error;
 
 use crate::element::Element;
 use crate::lower::{build_window, render_window};
+use crate::window_chrome_render::{
+    ACTION_WINDOW_CLOSE, ACTION_WINDOW_MINIMIZE, ACTION_WINDOW_TOGGLE_MAXIMIZE,
+};
 use crate::{
     async_state::{Mutation, Resource, mutation, resource, resource_value},
     session::{SessionCx, StaccatoCx},
@@ -366,9 +369,15 @@ where
                 width: initial.width,
                 height: initial.height,
                 chrome: initial.chrome,
+                resizable: initial.resizable,
+                visible: initial.visible,
+                active: initial.active,
+                always_on_top: initial.always_on_top,
+                transparent: initial.transparent,
+                background_effect: initial.background_effect,
                 ..WindowOptions::default()
             },
-            move |size| {
+            move |size, hovered, pressed, focused| {
                 let root = root_for_render.borrow();
                 let mut cx = Cx::with_settings_and_session(
                     &app_id_for_render,
@@ -378,11 +387,17 @@ where
                     Rc::clone(&session_for_render),
                 );
                 let window = build_window(&*root, &mut cx);
-                render_window(&window, size)
+                render_window(&window, size, hovered, pressed, focused)
             },
         )
         .shortcuts(shortcuts)
         .on_action(Arc::new(move |action_id| {
+            if matches!(
+                action_id,
+                ACTION_WINDOW_CLOSE | ACTION_WINDOW_MINIMIZE | ACTION_WINDOW_TOGGLE_MAXIMIZE
+            ) {
+                return;
+            }
             let enabled = action_registry
                 .get(action_id)
                 .map(|action| action.enabled)

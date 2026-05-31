@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, path::Path};
 use stuk_actions::{Shortcut, is_valid_action_id};
 use stuk_settings::SettingsSchema;
 
-use crate::{Diagnostic, DiagnosticLevel, Manifest, PlatformSection};
+use crate::{Diagnostic, DiagnosticLevel, Manifest, PlatformSection, WebViewSection};
 
 const VALID_MATERIALS: &[&str] = &[
     "solid",
@@ -19,6 +19,17 @@ const VALID_MATERIALS: &[&str] = &[
     "luca",
 ];
 const VALID_CHROMES: &[&str] = &["system", "stuk", "compact", "sidebar", "none"];
+const VALID_BACKGROUND_EFFECTS: &[&str] = &[
+    "none",
+    "blur",
+    "acrylic",
+    "mica",
+    "mica-alt",
+    "vibrancy",
+    "hud-window",
+    "sidebar",
+    "under-window-background",
+];
 const BOOLEAN_PERMISSIONS: &[&str] = &[
     "network",
     "notifications",
@@ -44,6 +55,16 @@ const FILESYSTEM_PERMISSIONS: &[&str] = &[
 ];
 const STACCATO_BOOL_FIELDS: &[&str] = &["command_palette", "workspace_sessions", "shell_tabs"];
 const STACCATO_MODES: &[&str] = &["app", "browser"];
+const VALID_WEBVIEW_ENGINES: &[&str] = &["cef"];
+const VALID_WEBVIEW_RUNTIMES: &[&str] = &[
+    "system-required",
+    "system-preferred",
+    "user-preferred",
+    "shared-preferred",
+    "bundled",
+    "disabled",
+];
+const VALID_WEBVIEW_DEVTOOLS: &[&str] = &["disabled", "dev-only", "enabled"];
 
 pub fn validate(manifest: &Manifest) -> Vec<Diagnostic> {
     validate_inner(manifest, None)
@@ -122,6 +143,16 @@ fn validate_inner(manifest: &Manifest, base_dir: Option<&Path>) -> Vec<Diagnosti
                 &mut diagnostics,
             );
         }
+        if let Some(effect) = &window.background_effect {
+            validate_string_option(
+                &format!("window.{name}.background_effect"),
+                effect,
+                VALID_BACKGROUND_EFFECTS,
+                "Window background effect is not supported.",
+                "Use none, blur, acrylic, mica, mica-alt, vibrancy, hud-window, sidebar, or under-window-background.",
+                &mut diagnostics,
+            );
+        }
         if let (Some(width), Some(min_width)) = (window.width, window.min_width) {
             if width < min_width {
                 diagnostics.push(Diagnostic {
@@ -148,8 +179,84 @@ fn validate_inner(manifest: &Manifest, base_dir: Option<&Path>) -> Vec<Diagnosti
     validate_settings(&manifest.settings, &mut diagnostics);
     validate_permissions(&manifest.permissions, &mut diagnostics);
     validate_platform(&manifest.platform, &mut diagnostics);
+    validate_webview(&manifest.webview, base_dir, &mut diagnostics);
 
     diagnostics
+}
+
+fn validate_webview(
+    webview: &WebViewSection,
+    base_dir: Option<&Path>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if let Some(engine) = &webview.engine {
+        validate_string_option(
+            "webview.engine",
+            engine,
+            VALID_WEBVIEW_ENGINES,
+            "Webview engine is not supported.",
+            "Use cef.",
+            diagnostics,
+        );
+    }
+
+    if let Some(runtime) = &webview.runtime {
+        validate_string_option(
+            "webview.runtime",
+            runtime,
+            VALID_WEBVIEW_RUNTIMES,
+            "Webview runtime mode is not supported.",
+            "Use system-required, system-preferred, user-preferred, shared-preferred, bundled, or disabled.",
+            diagnostics,
+        );
+    }
+
+    if let Some(entry) = &webview.entry {
+        if entry.trim().is_empty() {
+            diagnostics.push(Diagnostic {
+                level: DiagnosticLevel::Error,
+                path: "webview.entry".to_string(),
+                message: "Webview entry path cannot be empty.".to_string(),
+                fix_hint: Some("Use a path such as ui/dist/index.html.".to_string()),
+            });
+        } else if let Some(base_dir) = base_dir {
+            let entry_path = Path::new(entry);
+            if !entry_path.is_absolute() && !base_dir.join(entry_path).exists() {
+                diagnostics.push(Diagnostic {
+                    level: DiagnosticLevel::Warning,
+                    path: "webview.entry".to_string(),
+                    message: format!("Webview entry `{entry}` does not exist yet."),
+                    fix_hint: Some(
+                        "Build the webview assets first or update the entry path.".to_string(),
+                    ),
+                });
+            }
+        }
+    }
+
+    if let Some(devtools) = &webview.security.devtools {
+        validate_string_option(
+            "webview.security.devtools",
+            devtools,
+            VALID_WEBVIEW_DEVTOOLS,
+            "Webview devtools mode is not supported.",
+            "Use disabled, dev-only, or enabled.",
+            diagnostics,
+        );
+    }
+
+    if webview.security.remote_content.unwrap_or(false)
+        && webview.security.allowed_origins.is_none()
+    {
+        diagnostics.push(Diagnostic {
+            level: DiagnosticLevel::Warning,
+            path: "webview.security.remote_content".to_string(),
+            message: "Remote content is enabled without explicit allowed_origins.".to_string(),
+            fix_hint: Some(
+                "Add allowed_origins to restrict which remote origins can load.".to_string(),
+            ),
+        });
+    }
 }
 
 fn validate_actions(actions: &BTreeMap<String, toml::Value>, diagnostics: &mut Vec<Diagnostic>) {

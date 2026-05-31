@@ -42,6 +42,7 @@ where
 fn inspect_capabilities(capabilities: PlatformCapabilities) -> Vec<CapabilityInspection> {
     vec![
         capability("live_blur", capabilities.live_blur),
+        capability("transparent_windows", capabilities.transparent_windows),
         capability("wallpaper_material", capabilities.wallpaper_material),
         capability("shell_tabs", capabilities.shell_tabs),
         capability("command_palette", capabilities.command_palette),

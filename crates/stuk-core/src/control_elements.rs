@@ -34,6 +34,7 @@ pub struct ProgressBarElement {
     pub label: Option<String>,
     pub value: f32,
     pub max: f32,
+    pub color: Color,
 }
 
 #[derive(Clone, Debug)]

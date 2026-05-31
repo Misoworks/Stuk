@@ -23,6 +23,8 @@ pub struct Manifest {
     pub actions: BTreeMap<String, toml::Value>,
     #[serde(default)]
     pub settings: BTreeMap<String, toml::Value>,
+    #[serde(default)]
+    pub webview: WebViewSection,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,12 +44,60 @@ pub struct WindowSection {
     pub min_height: Option<u32>,
     pub material: Option<String>,
     pub chrome: Option<String>,
+    #[serde(default)]
+    pub transparent: Option<bool>,
+    #[serde(default)]
+    pub background_effect: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct PlatformSection {
     #[serde(default)]
     pub staccato: BTreeMap<String, toml::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WebViewSection {
+    #[serde(default)]
+    pub engine: Option<String>,
+    #[serde(default)]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub entry: Option<String>,
+    #[serde(default)]
+    pub min_version: Option<String>,
+    #[serde(default)]
+    pub allow_user_install: Option<bool>,
+    #[serde(default)]
+    pub allow_bundled: Option<bool>,
+    #[serde(default)]
+    pub dev: WebViewDevSection,
+    #[serde(default)]
+    pub security: WebViewSecuritySection,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WebViewDevSection {
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WebViewSecuritySection {
+    #[serde(default)]
+    pub remote_content: Option<bool>,
+    #[serde(default)]
+    pub allowed_origins: Option<Vec<String>>,
+    #[serde(default)]
+    pub devtools: Option<String>,
+    #[serde(default)]
+    pub allow_eval: Option<bool>,
+    #[serde(default)]
+    pub allow_node: Option<bool>,
+    #[serde(default)]
+    pub csp: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

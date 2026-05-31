@@ -34,6 +34,8 @@ pub struct WindowInspection {
     pub min_height: Option<u32>,
     pub material: Option<String>,
     pub chrome: Option<String>,
+    pub transparent: Option<bool>,
+    pub background_effect: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,6 +86,8 @@ impl ManifestInspection {
                     min_height: window.min_height,
                     material: window.material.clone(),
                     chrome: window.chrome.clone(),
+                    transparent: window.transparent,
+                    background_effect: window.background_effect.clone(),
                 })
                 .collect(),
             actions: action_inspections(manifest),
@@ -226,19 +230,27 @@ impl WindowInspection {
         if let Some(chrome) = &self.chrome {
             parts.push(format!("chrome={chrome}"));
         }
+        if self.transparent.unwrap_or(false) {
+            parts.push("transparent=true".to_string());
+        }
+        if let Some(effect) = &self.background_effect {
+            parts.push(format!("background_effect={effect}"));
+        }
         parts.join(" ")
     }
 
     fn to_json(&self) -> String {
         format!(
-            "{{\"name\":\"{}\",\"width\":{},\"height\":{},\"min_width\":{},\"min_height\":{},\"material\":{},\"chrome\":{}}}",
+            "{{\"name\":\"{}\",\"width\":{},\"height\":{},\"min_width\":{},\"min_height\":{},\"material\":{},\"chrome\":{},\"transparent\":{},\"background_effect\":{}}}",
             escape_json(&self.name),
             optional_json_u32(self.width),
             optional_json_u32(self.height),
             optional_json_u32(self.min_width),
             optional_json_u32(self.min_height),
             optional_json_string(self.material.as_deref()),
-            optional_json_string(self.chrome.as_deref())
+            optional_json_string(self.chrome.as_deref()),
+            optional_json_bool(self.transparent),
+            optional_json_string(self.background_effect.as_deref())
         )
     }
 }
@@ -387,6 +399,12 @@ fn permissions_json(permissions: &[PermissionInspection]) -> String {
 }
 
 fn optional_json_u32(value: Option<u32>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn optional_json_bool(value: Option<bool>) -> String {
     value
         .map(|value| value.to_string())
         .unwrap_or_else(|| "null".to_string())

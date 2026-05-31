@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 bytemuck.workspace = true
 glyphon.workspace = true
+image.workspace = true
 stuk-layout.workspace = true
 stuk-style.workspace = true
 thiserror.workspace = true

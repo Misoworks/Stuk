@@ -69,6 +69,8 @@ min_width = 420
 min_height = 280
 material = "maris"
 chrome = "system"
+transparent = false
+background_effect = "none"
 
 [permissions]
 network = false

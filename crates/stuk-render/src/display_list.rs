@@ -1,10 +1,13 @@
 use stuk_layout::Rect;
-use stuk_style::{Color, Material};
+use stuk_style::{Color, Material, NumberSpacing, TextAlign, TextWrap};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DisplayList {
     pub background: Color,
     pub commands: Vec<DisplayCommand>,
+    pub hovered_region: Option<String>,
+    pub pressed_region: Option<String>,
+    pub focused_region: Option<String>,
 }
 
 impl DisplayList {
@@ -12,6 +15,9 @@ impl DisplayList {
         Self {
             background,
             commands: Vec::new(),
+            hovered_region: None,
+            pressed_region: None,
+            focused_region: None,
         }
     }
 
@@ -175,6 +181,9 @@ pub struct TextCommand {
     pub size: f32,
     pub line_height: f32,
     pub color: Color,
+    pub wrap: TextWrap,
+    pub align: TextAlign,
+    pub number_spacing: NumberSpacing,
 }
 
 impl TextCommand {
@@ -459,5 +468,100 @@ mod tests {
             radius: 8.0,
         });
         assert!(clipped.damage_since(&before).is_full());
+    }
+
+    #[test]
+    fn display_list_tracks_command_count() {
+        let mut list = DisplayList::new(Color::WINDOW);
+        assert_eq!(list.commands.len(), 0);
+        list.push(RectCommand {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+            color: Color::WHITE,
+        });
+        assert_eq!(list.commands.len(), 1);
+        list.push(RoundedRectCommand {
+            x: 10.0,
+            y: 10.0,
+            width: 80.0,
+            height: 80.0,
+            radius: 8.0,
+            color: Color::ACCENT,
+        });
+        assert_eq!(list.commands.len(), 2);
+    }
+
+    #[test]
+    fn damage_uses_union_of_old_and_new_bounds() {
+        let mut before = DisplayList::new(Color::WINDOW);
+        before.push(RectCommand {
+            x: 100.0,
+            y: 100.0,
+            width: 50.0,
+            height: 50.0,
+            color: Color::WHITE,
+        });
+
+        let mut after = before.clone();
+        after.commands[0] = RectCommand {
+            x: 120.0,
+            y: 120.0,
+            width: 50.0,
+            height: 50.0,
+            color: Color::ACCENT,
+        }
+        .into();
+
+        let damage = after.damage_since(&before);
+        assert!(!damage.is_full());
+        let bounds = damage.bounds().unwrap();
+        assert_eq!(bounds.x, 100.0);
+        assert_eq!(bounds.y, 100.0);
+        assert!(bounds.width >= 70.0);
+        assert!(bounds.height >= 70.0);
+    }
+
+    #[test]
+    fn display_list_includes_all_command_types() {
+        let mut list = DisplayList::new(Color::WINDOW);
+        list.push(RectCommand {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            color: Color::WHITE,
+        });
+        list.push(RoundedRectCommand {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            radius: 4.0,
+            color: Color::ACCENT,
+        });
+        list.push(BorderCommand {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            radius: 4.0,
+            thickness: 1.0,
+            color: Color::TEXT,
+        });
+        list.push(ShadowCommand {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            radius: 4.0,
+            offset_x: 2.0,
+            offset_y: 2.0,
+            blur: 8.0,
+            spread: 0.0,
+            color: Color::WHITE.opacity(0.2),
+        });
+        assert_eq!(list.commands.len(), 4);
     }
 }

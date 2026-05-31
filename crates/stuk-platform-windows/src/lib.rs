@@ -9,14 +9,27 @@ use stuk_style::{Material, Theme};
 #[derive(Debug)]
 pub struct WindowsPlatform {
     inner: GenericPlatform,
+    backdrop: WindowsBackdrop,
 }
 
 impl WindowsPlatform {
     pub fn new() -> Self {
+        Self::with_backdrop(WindowsBackdrop::Acrylic)
+    }
+
+    pub fn with_backdrop(backdrop: WindowsBackdrop) -> Self {
         Self {
-            inner: GenericPlatform::with_capabilities(windows_capabilities()),
+            inner: GenericPlatform::with_capabilities(windows_capabilities(backdrop)),
+            backdrop,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowsBackdrop {
+    Acrylic,
+    Mica,
+    Disabled,
 }
 
 impl Default for WindowsPlatform {
@@ -28,17 +41,33 @@ impl Default for WindowsPlatform {
 impl MaterialResolver for WindowsPlatform {
     fn resolve_material(&self, material: &Material, theme: &Theme) -> MaterialResolution {
         match material {
-            Material::Luca => MaterialResolution::with_effect(
-                material,
-                theme,
-                MaterialEffect::NativeMaterial { name: "acrylic" },
-            ),
-            Material::Maris | Material::Window => MaterialResolution::with_effect(
-                material,
-                theme,
-                MaterialEffect::NativeMaterial { name: "mica" },
-            ),
+            Material::Luca if self.backdrop != WindowsBackdrop::Disabled => {
+                MaterialResolution::with_effect(
+                    material,
+                    theme,
+                    MaterialEffect::NativeMaterial {
+                        name: self.backdrop.native_name(),
+                    },
+                )
+            }
+            Material::Maris | Material::Window if self.backdrop != WindowsBackdrop::Disabled => {
+                MaterialResolution::with_effect(
+                    material,
+                    theme,
+                    MaterialEffect::NativeMaterial { name: "mica" },
+                )
+            }
             _ => MaterialResolution::fallback(material, theme),
+        }
+    }
+}
+
+impl WindowsBackdrop {
+    fn native_name(self) -> &'static str {
+        match self {
+            Self::Acrylic => "acrylic",
+            Self::Mica => "mica",
+            Self::Disabled => "solid",
         }
     }
 }
@@ -89,9 +118,10 @@ impl Platform for WindowsPlatform {
     }
 }
 
-pub fn windows_capabilities() -> PlatformCapabilities {
+pub fn windows_capabilities(backdrop: WindowsBackdrop) -> PlatformCapabilities {
     PlatformCapabilities {
-        live_blur: true,
+        live_blur: backdrop != WindowsBackdrop::Disabled,
+        transparent_windows: backdrop != WindowsBackdrop::Disabled,
         wallpaper_material: false,
         shell_tabs: false,
         command_palette: false,
@@ -120,5 +150,17 @@ mod tests {
             MaterialEffect::NativeMaterial { name: "mica" }
         );
         assert!(platform.platform_capabilities().native_notifications);
+    }
+
+    #[test]
+    fn windows_allows_mica_override_for_live_backdrop() {
+        let platform = WindowsPlatform::with_backdrop(WindowsBackdrop::Mica);
+
+        assert_eq!(
+            platform
+                .resolve_material(&Material::Luca, &Theme::dark())
+                .effect,
+            MaterialEffect::NativeMaterial { name: "mica" }
+        );
     }
 }

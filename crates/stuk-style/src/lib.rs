@@ -8,13 +8,13 @@ pub struct Color {
 
 impl Color {
     pub const WHITE: Self = Self::rgb(1.0, 1.0, 1.0);
-    pub const TEXT: Self = Self::rgb(0.92, 0.92, 0.88);
-    pub const TEXT_MUTED: Self = Self::rgb(0.62, 0.64, 0.61);
-    pub const ACCENT: Self = Self::rgb(0.42, 0.68, 0.55);
-    pub const SURFACE: Self = Self::rgb(0.086, 0.09, 0.086);
-    pub const SURFACE_ELEVATED: Self = Self::rgb(0.13, 0.135, 0.128);
-    pub const WINDOW: Self = Self::rgb(0.055, 0.06, 0.056);
-    pub const DANGER: Self = Self::rgb(0.9, 0.25, 0.3);
+    pub const TEXT: Self = Self::rgb(0.95, 0.95, 0.95);
+    pub const TEXT_MUTED: Self = Self::rgb(0.58, 0.58, 0.58);
+    pub const ACCENT: Self = Self::rgb(0.66, 0.66, 0.66);
+    pub const SURFACE: Self = Self::rgb(0.11, 0.11, 0.11);
+    pub const SURFACE_ELEVATED: Self = Self::rgb(0.16, 0.16, 0.16);
+    pub const WINDOW: Self = Self::rgb(0.08, 0.08, 0.08);
+    pub const DANGER: Self = Self::rgb(0.70, 0.70, 0.70);
 
     pub const fn rgb(r: f32, g: f32, b: f32) -> Self {
         Self { r, g, b, a: 1.0 }
@@ -155,8 +155,6 @@ impl Theme {
             self.colors.window
         } else if color == Color::DANGER {
             self.colors.danger
-        } else if color == Color::WHITE.opacity(0.08) {
-            self.colors.outline
         } else {
             color
         }
@@ -173,7 +171,13 @@ impl Theme {
 
     pub fn button_text(&self, variant: ButtonVariant) -> Color {
         match variant {
-            ButtonVariant::Primary | ButtonVariant::Destructive => self.colors.on_accent,
+            ButtonVariant::Primary | ButtonVariant::Destructive => {
+                if self.mode != ThemeMode::Light {
+                    self.colors.window
+                } else {
+                    self.colors.on_accent
+                }
+            }
             ButtonVariant::Secondary | ButtonVariant::Ghost => self.colors.text,
         }
     }
@@ -200,39 +204,39 @@ pub struct ColorTokens {
 impl ColorTokens {
     pub fn dark() -> Self {
         Self {
-            text: Color::TEXT,
-            text_muted: Color::TEXT_MUTED,
-            accent: Color::ACCENT,
-            on_accent: Color::rgb(0.035, 0.04, 0.035),
-            surface: Color::SURFACE,
-            surface_elevated: Color::SURFACE_ELEVATED,
-            window: Color::WINDOW,
-            sidebar: Color::rgb(0.075, 0.08, 0.076),
-            toolbar: Color::rgb(0.1, 0.105, 0.098),
-            control: Color::rgb(0.2, 0.21, 0.2),
-            outline: Color::WHITE.opacity(0.08),
-            danger: Color::DANGER,
-            warning: Color::rgb(1.0, 0.8, 0.4),
-            success: Color::rgb(0.27, 0.83, 0.51),
+            text: Color::rgb(0.96, 0.96, 0.96),
+            text_muted: Color::rgb(0.72, 0.72, 0.72),
+            accent: Color::rgb(0.64, 0.64, 0.64),
+            on_accent: Color::rgb(1.0, 1.0, 1.0),
+            surface: Color::rgb(0.090, 0.090, 0.090),
+            surface_elevated: Color::rgb(0.125, 0.125, 0.125),
+            window: Color::rgb(0.070, 0.070, 0.070),
+            sidebar: Color::rgb(0.105, 0.105, 0.105),
+            toolbar: Color::rgb(0.110, 0.110, 0.110),
+            control: Color::rgb(0.260, 0.260, 0.260),
+            outline: Color::WHITE.opacity(0.14),
+            danger: Color::rgb(0.72, 0.72, 0.72),
+            warning: Color::rgb(0.62, 0.62, 0.62),
+            success: Color::rgb(0.70, 0.70, 0.70),
         }
     }
 
     pub fn light() -> Self {
         Self {
-            text: Color::rgb(0.1, 0.105, 0.098),
-            text_muted: Color::rgb(0.42, 0.43, 0.4),
-            accent: Color::rgb(0.28, 0.53, 0.42),
-            on_accent: Color::rgb(0.98, 0.98, 0.94),
-            surface: Color::rgb(0.93, 0.925, 0.9),
-            surface_elevated: Color::rgb(0.985, 0.98, 0.95),
-            window: Color::rgb(0.96, 0.955, 0.93),
-            sidebar: Color::rgb(0.89, 0.885, 0.86),
-            toolbar: Color::rgb(0.92, 0.915, 0.89),
-            control: Color::rgb(0.84, 0.835, 0.8),
-            outline: Color::rgb(0.1, 0.105, 0.098).opacity(0.12),
-            danger: Color::rgb(0.72, 0.16, 0.2),
-            warning: Color::rgb(0.72, 0.48, 0.12),
-            success: Color::rgb(0.16, 0.56, 0.32),
+            text: Color::rgb(0.09, 0.09, 0.09),
+            text_muted: Color::rgb(0.42, 0.42, 0.42),
+            accent: Color::rgb(0.36, 0.36, 0.36),
+            on_accent: Color::rgb(1.0, 1.0, 1.0),
+            surface: Color::rgb(0.96, 0.96, 0.96),
+            surface_elevated: Color::rgb(1.0, 1.0, 1.0),
+            window: Color::rgb(0.94, 0.94, 0.94),
+            sidebar: Color::rgb(0.90, 0.90, 0.90),
+            toolbar: Color::rgb(0.93, 0.93, 0.93),
+            control: Color::rgb(0.86, 0.86, 0.86),
+            outline: Color::rgb(0.10, 0.10, 0.10).opacity(0.12),
+            danger: Color::rgb(0.38, 0.38, 0.38),
+            warning: Color::rgb(0.48, 0.48, 0.48),
+            success: Color::rgb(0.34, 0.34, 0.34),
         }
     }
 }
@@ -252,9 +256,9 @@ impl Default for RadiusTokens {
         Self {
             xs: 4.0,
             sm: 6.0,
-            md: 10.0,
-            lg: 16.0,
-            xl: 22.0,
+            md: 8.0,
+            lg: 12.0,
+            xl: 16.0,
             pill: 999.0,
         }
     }
@@ -273,12 +277,12 @@ pub struct SpacingTokens {
 impl Default for SpacingTokens {
     fn default() -> Self {
         Self {
-            xs: 4.0,
-            sm: 8.0,
-            md: 12.0,
-            lg: 16.0,
-            xl: 24.0,
-            xxl: 32.0,
+            xs: 6.0,
+            sm: 10.0,
+            md: 16.0,
+            lg: 24.0,
+            xl: 32.0,
+            xxl: 48.0,
         }
     }
 }
@@ -291,6 +295,8 @@ pub struct FontTokens {
     pub small: f32,
     pub title: f32,
     pub large_title: f32,
+    pub line_height: f32,
+    pub title_line_height: f32,
 }
 
 impl Default for FontTokens {
@@ -298,10 +304,12 @@ impl Default for FontTokens {
         Self {
             family: "System".to_string(),
             mono_family: "System Mono".to_string(),
-            size: 14.0,
-            small: 12.0,
-            title: 20.0,
-            large_title: 28.0,
+            size: 13.0,
+            small: 11.0,
+            title: 17.0,
+            large_title: 22.0,
+            line_height: 1.5,
+            title_line_height: 1.3,
         }
     }
 }
@@ -330,6 +338,36 @@ impl Default for AnimationTokens {
             curve: AnimationCurve::EmphasizedDecelerate,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextWrap {
+    #[default]
+    Normal,
+    Balance,
+    Pretty,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextAlign {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ControlTextAlign {
+    #[default]
+    Center,
+    Start,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NumberSpacing {
+    #[default]
+    Proportional,
+    Tabular,
 }
 
 #[derive(Clone, Debug, PartialEq)]

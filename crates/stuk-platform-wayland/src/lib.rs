@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+mod blur;
+
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
     ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform, MaterialEffect,
@@ -13,7 +16,11 @@ pub struct WaylandPlatform {
 }
 
 impl WaylandPlatform {
-    pub fn new(background_effects: bool) -> Self {
+    pub fn new() -> Self {
+        Self::from_background_effect_support(blur::has_background_effect_protocol())
+    }
+
+    pub fn from_background_effect_support(background_effects: bool) -> Self {
         Self {
             inner: GenericPlatform::with_capabilities(wayland_capabilities(background_effects)),
             background_effects,
@@ -21,7 +28,11 @@ impl WaylandPlatform {
     }
 
     pub fn with_background_effects() -> Self {
-        Self::new(true)
+        Self::from_background_effect_support(true)
+    }
+
+    pub fn without_background_effects() -> Self {
+        Self::from_background_effect_support(false)
     }
 
     pub fn background_effects(&self) -> bool {
@@ -31,7 +42,7 @@ impl WaylandPlatform {
 
 impl Default for WaylandPlatform {
     fn default() -> Self {
-        Self::new(false)
+        Self::new()
     }
 }
 
@@ -100,6 +111,7 @@ impl Platform for WaylandPlatform {
 pub fn wayland_capabilities(background_effects: bool) -> PlatformCapabilities {
     PlatformCapabilities {
         live_blur: background_effects,
+        transparent_windows: background_effects,
         wallpaper_material: false,
         shell_tabs: false,
         command_palette: false,
@@ -133,7 +145,7 @@ mod tests {
 
     #[test]
     fn wayland_falls_back_without_background_effect_protocol() {
-        let platform = WaylandPlatform::default();
+        let platform = WaylandPlatform::without_background_effects();
         let effect = platform
             .resolve_material(&Material::Luca, &Theme::dark())
             .effect;

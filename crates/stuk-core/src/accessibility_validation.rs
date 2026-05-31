@@ -433,12 +433,20 @@ mod tests {
                     variant: ButtonVariant::Primary,
                     action: None,
                     disabled: false,
+                    text_align: stuk_style::ControlTextAlign::Center,
                 }),
                 Element::TextField(TextFieldElement {
                     label: None,
                     text: String::new(),
                     placeholder: "Search".to_string(),
                     disabled: false,
+                    focused: false,
+                    multiline: false,
+                    caret: None,
+                    selection: None,
+                    background: true,
+                    padding_x: 16.0,
+                    padding_y: 12.0,
                 }),
             ],
         });
@@ -466,6 +474,7 @@ mod tests {
             variant: ButtonVariant::Primary,
             action: None,
             disabled: true,
+            text_align: stuk_style::ControlTextAlign::Center,
         });
 
         assert!(validate_accessibility(&element).is_empty());

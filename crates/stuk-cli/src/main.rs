@@ -1,6 +1,7 @@
 mod build;
 mod doctor;
 mod project;
+mod runtime;
 mod templates;
 
 use std::{
@@ -12,6 +13,7 @@ use build::{BuildOptions, run_build};
 use clap::{Parser, Subcommand};
 use doctor::run_doctor;
 use project::{CreateProjectOptions, DevOptions, create_project, run_cargo_command, run_dev};
+use runtime::RuntimeCommand;
 use stuk_devtools::{BundlePlan, BundleTarget, ManifestInspection, PreviewDescriptor};
 use stuk_manifest::{Diagnostic, DiagnosticLevel, parse_file, validate_with_base_dir};
 
@@ -78,6 +80,29 @@ enum Command {
         #[arg(default_value = "Stuk.toml")]
         manifest: PathBuf,
     },
+    Runtime {
+        #[command(subcommand)]
+        command: RuntimeSubcommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RuntimeSubcommand {
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    Install {
+        engine: String,
+    },
+    Remove {
+        engine: String,
+        version: Option<String>,
+    },
+    Doctor {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -116,6 +141,14 @@ fn run(command: Command) -> Result<ExitCode, String> {
             json,
             manifest,
         } => bundle_manifest(target, json, manifest),
+        Command::Runtime { command } => Ok(runtime::run_runtime(match command {
+            RuntimeSubcommand::List { json } => RuntimeCommand::List { json },
+            RuntimeSubcommand::Install { engine } => RuntimeCommand::Install { engine },
+            RuntimeSubcommand::Remove { engine, version } => {
+                RuntimeCommand::Remove { engine, version }
+            }
+            RuntimeSubcommand::Doctor { json } => RuntimeCommand::Doctor { json },
+        })),
     }
 }
 

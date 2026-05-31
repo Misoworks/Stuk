@@ -19,6 +19,7 @@ min_width = 720
 min_height = 360
 material = "fog"
 chrome = "giant"
+background_effect = "sparkles"
 
 [platform.staccato]
 command_palette = "yes"
@@ -38,6 +39,7 @@ unknown = true
     assert_has_error(&diagnostics, "window.main.width");
     assert_has_error(&diagnostics, "window.main.material");
     assert_has_error(&diagnostics, "window.main.chrome");
+    assert_has_error(&diagnostics, "window.main.background_effect");
     assert_has_error(&diagnostics, "platform.staccato.command_palette");
     assert_has_error(&diagnostics, "platform.staccato.preferred_mode");
     assert_has_error(&diagnostics, "permissions.network");
@@ -69,6 +71,8 @@ min_width = 420
 min_height = 320
 material = "maris"
 chrome = "compact"
+transparent = true
+background_effect = "mica"
 
 [platform.staccato]
 command_palette = true
@@ -120,4 +124,72 @@ fn assert_has_error(diagnostics: &[crate::Diagnostic], path: &str) {
                 && diagnostic.path == path),
         "missing error at {path}: {diagnostics:?}"
     );
+}
+
+#[test]
+fn validates_webview_fields() {
+    let manifest = parse(
+        r#"
+[app]
+id = "dev.example.app"
+name = "App"
+version = "0.1.0"
+
+[webview]
+engine = "unknown"
+runtime = "invalid"
+entry = ""
+
+[webview.security]
+devtools = "always"
+remote_content = true
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = validate(&manifest);
+    assert_has_error(&diagnostics, "webview.engine");
+    assert_has_error(&diagnostics, "webview.runtime");
+    assert_has_error(&diagnostics, "webview.entry");
+    assert_has_error(&diagnostics, "webview.security.devtools");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.path == "webview.security.remote_content")
+    );
+}
+
+#[test]
+fn accepts_valid_webview_config() {
+    let manifest = parse(
+        r#"
+[app]
+id = "dev.example.app"
+name = "App"
+version = "0.1.0"
+
+[webview]
+engine = "cef"
+runtime = "shared-preferred"
+entry = "ui/dist/index.html"
+min_version = "126"
+allow_user_install = true
+allow_bundled = true
+
+[webview.dev]
+command = "npm run dev"
+url = "http://localhost:5173"
+
+[webview.security]
+remote_content = false
+devtools = "dev-only"
+allow_eval = false
+allow_node = false
+csp = "default-src 'self'"
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = validate(&manifest);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
 }

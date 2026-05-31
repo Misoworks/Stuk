@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+glyphon.workspace = true
 stuk-accessibility.workspace = true
 stuk-actions.workspace = true
 stuk-layout.workspace = true

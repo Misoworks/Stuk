@@ -143,6 +143,9 @@ mod tests {
                 size: 14.0,
                 line_height: 20.0,
                 color: stuk_style::Color::TEXT,
+                wrap: stuk_style::TextWrap::Normal,
+                number_spacing: stuk_style::NumberSpacing::Proportional,
+                align: stuk_style::TextAlign::Start,
             }
             .into()
         }

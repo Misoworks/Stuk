@@ -85,6 +85,13 @@ impl TextField {
                 text: value.into(),
                 placeholder: String::new(),
                 disabled: false,
+                focused: false,
+                multiline: false,
+                caret: None,
+                selection: None,
+                background: true,
+                padding_x: 16.0,
+                padding_y: 12.0,
             },
         }
     }
@@ -101,6 +108,45 @@ impl TextField {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.element.disabled = disabled;
+        self
+    }
+
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.element.focused = focused;
+        self
+    }
+
+    pub fn multiline(mut self, multiline: bool) -> Self {
+        self.element.multiline = multiline;
+        self
+    }
+
+    pub fn caret(mut self, caret: usize) -> Self {
+        self.element.caret = Some(caret);
+        self
+    }
+
+    pub fn selection(mut self, anchor: usize, focus: usize) -> Self {
+        self.element.selection = Some((anchor, focus));
+        self.element.caret = Some(focus);
+        self
+    }
+
+    pub fn background(mut self, background: bool) -> Self {
+        self.element.background = background;
+        self
+    }
+
+    pub fn padding(mut self, x: f32, y: f32) -> Self {
+        self.element.padding_x = x.max(0.0);
+        self.element.padding_y = y.max(0.0);
+        self
+    }
+
+    pub fn plain(mut self) -> Self {
+        self.element.background = false;
+        self.element.padding_x = 0.0;
+        self.element.padding_y = 0.0;
         self
     }
 }
@@ -130,6 +176,16 @@ impl ScrollView {
 
     pub fn fill_width(mut self) -> Self {
         self.element.width = Length::Fill;
+        self
+    }
+
+    pub fn scroll_offset_y(mut self, offset: f32) -> Self {
+        self.element.scroll_offset_y = offset.max(0.0);
+        self
+    }
+
+    pub fn scroll_offset_x(mut self, offset: f32) -> Self {
+        self.element.scroll_offset_x = offset.max(0.0);
         self
     }
 }

@@ -365,7 +365,7 @@ fn same_options(
 mod tests {
     use super::*;
     use crate::{TextElement, VirtualListRowElement};
-    use stuk_style::Color;
+    use stuk_style::{Color, NumberSpacing, TextWrap};
 
     fn text(value: &str) -> Element {
         Element::Text(TextElement {
@@ -373,6 +373,9 @@ mod tests {
             size: 14.0,
             line_height: 20.0,
             color: Color::TEXT,
+            wrap: TextWrap::Normal,
+            number_spacing: NumberSpacing::Proportional,
+            align: stuk_style::TextAlign::Start,
         })
     }
 

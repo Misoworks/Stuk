@@ -13,3 +13,4 @@ path = "src/main.rs"
 clap.workspace = true
 stuk-devtools.workspace = true
 stuk-manifest.workspace = true
+stuk-web-runtime.workspace = true

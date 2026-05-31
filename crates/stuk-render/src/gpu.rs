@@ -1,17 +1,19 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
+use glyphon::cosmic_text::Align;
 use glyphon::{
     Attrs, Buffer, Cache, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea,
-    TextAtlas, TextBounds, TextRenderer, Viewport,
+    TextAtlas, TextBounds, TextRenderer, Viewport, Wrap,
 };
+use image::GenericImageView;
 use stuk_style::Color;
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::rect_pipeline::{
-    Globals, RectVertex, create_rounded_rect_pipeline, push_rect_command,
-    push_rounded_rect_command, to_wgpu_color,
+    Globals, ImageVertex, RectVertex, create_image_pipeline, create_rounded_rect_pipeline,
+    push_image_quad, push_rect_command, push_rounded_rect_command, to_wgpu_color,
 };
 use crate::{
     DisplayCommand, DisplayList, RectCommand, RoundedRectCommand, ShadowCommand, TextCommand,
@@ -38,6 +40,9 @@ pub struct GpuRenderer {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
+    image_pipeline: wgpu::RenderPipeline,
+    image_sampler: wgpu::Sampler,
+    image_bind_group_layout: wgpu::BindGroupLayout,
     globals_buffer: wgpu::Buffer,
     globals_bind_group: wgpu::BindGroup,
     font_system: FontSystem,
@@ -46,8 +51,17 @@ pub struct GpuRenderer {
     atlas: TextAtlas,
     text_renderer: TextRenderer,
     text_buffers: Vec<TextBufferEntry>,
+    texture_cache: HashMap<String, CachedTexture>,
     scale_factor: f32,
     window: Arc<dyn Window>,
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+struct CachedTexture {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    bind_group: wgpu::BindGroup,
 }
 
 impl GpuRenderer {
@@ -86,7 +100,14 @@ impl GpuRenderer {
             .alpha_modes
             .iter()
             .copied()
-            .find(|mode| *mode == wgpu::CompositeAlphaMode::Opaque)
+            .find(|mode| *mode == wgpu::CompositeAlphaMode::PreMultiplied)
+            .or_else(|| {
+                capabilities
+                    .alpha_modes
+                    .iter()
+                    .copied()
+                    .find(|mode| *mode == wgpu::CompositeAlphaMode::PostMultiplied)
+            })
             .unwrap_or(capabilities.alpha_modes[0]);
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -131,6 +152,39 @@ impl GpuRenderer {
             }],
         });
         let pipeline = create_rounded_rect_pipeline(&device, format, &globals_bind_group_layout);
+        let image_pipeline = create_image_pipeline(&device, format, &globals_bind_group_layout);
+        let image_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("stuk image sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        let image_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("stuk image per-texture bind group layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
+            });
 
         let font_system = FontSystem::new();
         let cache = Cache::new(&device);
@@ -146,6 +200,9 @@ impl GpuRenderer {
             surface,
             surface_config,
             pipeline,
+            image_pipeline,
+            image_sampler,
+            image_bind_group_layout,
             globals_buffer,
             globals_bind_group,
             font_system,
@@ -154,6 +211,7 @@ impl GpuRenderer {
             atlas,
             text_renderer,
             text_buffers: Vec::new(),
+            texture_cache: HashMap::new(),
             scale_factor: window.scale_factor() as f32,
             window,
         })
@@ -198,6 +256,8 @@ impl GpuRenderer {
         );
 
         let rect_vertices = self.rect_vertices(display_list);
+        let image_draws = self.image_draws(display_list);
+        let clip_rect = find_clip_rect(display_list, self.scale_factor);
         self.rebuild_text_buffers(display_list);
         let text_areas = text_areas(&self.text_buffers, self.scale_factor);
         if !text_areas.is_empty() {
@@ -266,6 +326,15 @@ impl GpuRenderer {
                 multiview_mask: None,
             });
 
+            if let Some(clip) = clip_rect {
+                pass.set_scissor_rect(
+                    clip.x as u32,
+                    clip.y as u32,
+                    clip.width as u32,
+                    clip.height as u32,
+                );
+            }
+
             if !rect_vertices.is_empty() {
                 let vertex_buffer =
                     self.device
@@ -280,6 +349,22 @@ impl GpuRenderer {
                 pass.draw(0..rect_vertices.len() as u32, 0..1);
             }
 
+            for draw in &image_draws {
+                pass.set_pipeline(&self.image_pipeline);
+                pass.set_bind_group(0, &self.globals_bind_group, &[]);
+                pass.set_bind_group(1, &draw.bind_group, &[]);
+
+                let vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("stuk image vertices"),
+                            contents: bytemuck::cast_slice(&draw.vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                pass.draw(0..draw.vertices.len() as u32, 0..1);
+            }
+
             if !self.text_buffers.is_empty() {
                 self.text_renderer
                     .render(&self.atlas, &self.viewport, &mut pass)
@@ -291,6 +376,98 @@ impl GpuRenderer {
         frame.present();
         self.atlas.trim();
         Ok(())
+    }
+
+    fn image_draws(&mut self, display_list: &DisplayList) -> Vec<ImageDraw> {
+        let mut draws = Vec::new();
+        for command in &display_list.commands {
+            let DisplayCommand::Image(image) = command else {
+                continue;
+            };
+            let path = image.id.clone();
+            let cached = self.texture_cache.get(&path).cloned();
+            let bind_group = match cached {
+                Some(entry) => entry.bind_group,
+                None => match self.load_image_texture(&path) {
+                    Ok(bind_group) => bind_group,
+                    Err(_) => continue,
+                },
+            };
+            let mut vertices = Vec::new();
+            push_image_quad(
+                &mut vertices,
+                image.x,
+                image.y,
+                image.width,
+                image.height,
+                self.scale_factor,
+            );
+            draws.push(ImageDraw {
+                bind_group,
+                vertices,
+            });
+        }
+        draws
+    }
+
+    fn load_image_texture(&mut self, path: &str) -> Result<wgpu::BindGroup, String> {
+        let img = image::open(path).map_err(|e| format!("failed to load image {path}: {e}"))?;
+        let dimensions = img.dimensions();
+        let rgba = img.to_rgba8();
+        let size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            depth_or_array_layers: 1,
+        };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(path),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0),
+                rows_per_image: Some(dimensions.1),
+            },
+            size,
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(path),
+            layout: &self.image_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Sampler(&self.image_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+            ],
+        });
+        self.texture_cache.insert(
+            path.to_string(),
+            CachedTexture {
+                texture,
+                view,
+                bind_group: bind_group.clone(),
+            },
+        );
+        Ok(bind_group)
     }
 
     fn rect_vertices(&self, display_list: &DisplayList) -> Vec<RectVertex> {
@@ -350,12 +527,13 @@ impl GpuRenderer {
                 Some(command.width * scale),
                 Some(command.height * scale),
             );
+            buffer.set_wrap(&mut self.font_system, to_glyphon_wrap(command.wrap));
             buffer.set_text(
                 &mut self.font_system,
                 &command.text,
                 &Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
-                None,
+                Some(to_glyphon_align(command.align)),
             );
             buffer.shape_until_scroll(&mut self.font_system, false);
             self.text_buffers.push(TextBufferEntry {
@@ -392,7 +570,27 @@ fn text_areas(text_buffers: &[TextBufferEntry], scale: f32) -> Vec<TextArea<'_>>
 }
 
 fn to_glyphon_color(color: Color) -> glyphon::Color {
-    glyphon::Color::rgb(to_u8(color.r), to_u8(color.g), to_u8(color.b))
+    glyphon::Color::rgba(
+        to_u8(color.r),
+        to_u8(color.g),
+        to_u8(color.b),
+        to_u8(color.a),
+    )
+}
+
+fn to_glyphon_align(align: stuk_style::TextAlign) -> Align {
+    match align {
+        stuk_style::TextAlign::Start => Align::Left,
+        stuk_style::TextAlign::Center => Align::Center,
+        stuk_style::TextAlign::End => Align::Right,
+    }
+}
+
+fn to_glyphon_wrap(wrap: stuk_style::TextWrap) -> Wrap {
+    match wrap {
+        stuk_style::TextWrap::Normal => Wrap::None,
+        stuk_style::TextWrap::Pretty | stuk_style::TextWrap::Balance => Wrap::WordOrGlyph,
+    }
 }
 
 fn to_u8(value: f32) -> u8 {
@@ -453,4 +651,27 @@ fn push_shadow_command(vertices: &mut Vec<RectVertex>, command: &ShadowCommand, 
         },
         scale,
     );
+}
+
+struct ImageDraw {
+    bind_group: wgpu::BindGroup,
+    vertices: Vec<ImageVertex>,
+}
+
+fn find_clip_rect(display_list: &DisplayList, scale: f32) -> Option<stuk_layout::Rect> {
+    for command in &display_list.commands {
+        if let DisplayCommand::Clip(clip) = command {
+            let x = (clip.x * scale) as u32;
+            let y = (clip.y * scale) as u32;
+            let width = (clip.width * scale).ceil() as u32;
+            let height = (clip.height * scale).ceil() as u32;
+            return Some(stuk_layout::Rect::new(
+                x as f32,
+                y as f32,
+                width as f32,
+                height as f32,
+            ));
+        }
+    }
+    None
 }

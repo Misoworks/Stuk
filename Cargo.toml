@@ -19,16 +19,16 @@ members = [
     "crates/stuk-settings",
     "crates/stuk-manifest",
     "crates/stuk-cli",
-    "examples/counter",
-    "examples/hello",
+    "crates/stuk-web-runtime",
+    "crates/stuk-webview",
     "examples/notes",
-    "examples/settings",
-    "examples/shell-panel",
-    "examples/split-view",
+    "examples/web-runtime",
+    "tests/integration",
+    "benches",
 ]
 default-members = [
     "crates/stuk-cli",
-    "examples/hello",
+    "examples/web-runtime",
 ]
 
 [workspace.package]
@@ -54,14 +54,21 @@ stuk-platform-macos = { path = "crates/stuk-platform-macos" }
 stuk-accessibility = { path = "crates/stuk-accessibility" }
 stuk-settings = { path = "crates/stuk-settings" }
 stuk-manifest = { path = "crates/stuk-manifest" }
+stuk-web-runtime = { path = "crates/stuk-web-runtime" }
+stuk-webview = { path = "crates/stuk-webview" }
 
 accesskit = "0.24.0"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 clap = { version = "4.6.1", features = ["derive"] }
+criterion = "0.5"
 glyphon = "0.11.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 pollster = "0.4.0"
+raw-window-handle = "0.6.2"
 serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2.0.18"
 toml = "1.1.2"
 wgpu = "29.0.3"
 winit = "0.31.0-beta.2"
+x11rb = "0.13.2"

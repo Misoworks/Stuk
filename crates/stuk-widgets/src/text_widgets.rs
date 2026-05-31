@@ -57,6 +57,36 @@ impl SearchField {
         self.field = self.field.disabled(disabled);
         self
     }
+
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.field = self.field.focused(focused);
+        self
+    }
+
+    pub fn caret(mut self, caret: usize) -> Self {
+        self.field = self.field.caret(caret);
+        self
+    }
+
+    pub fn selection(mut self, anchor: usize, focus: usize) -> Self {
+        self.field = self.field.selection(anchor, focus);
+        self
+    }
+
+    pub fn background(mut self, background: bool) -> Self {
+        self.field = self.field.background(background);
+        self
+    }
+
+    pub fn padding(mut self, x: f32, y: f32) -> Self {
+        self.field = self.field.padding(x, y);
+        self
+    }
+
+    pub fn plain(mut self) -> Self {
+        self.field = self.field.plain();
+        self
+    }
 }
 
 impl From<SearchField> for Element {
@@ -73,7 +103,7 @@ pub struct TextArea {
 impl TextArea {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
-            field: TextField::new(value),
+            field: TextField::new(value).multiline(true),
         }
     }
 
@@ -89,6 +119,36 @@ impl TextArea {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.field = self.field.disabled(disabled);
+        self
+    }
+
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.field = self.field.focused(focused);
+        self
+    }
+
+    pub fn caret(mut self, caret: usize) -> Self {
+        self.field = self.field.caret(caret);
+        self
+    }
+
+    pub fn selection(mut self, anchor: usize, focus: usize) -> Self {
+        self.field = self.field.selection(anchor, focus);
+        self
+    }
+
+    pub fn background(mut self, background: bool) -> Self {
+        self.field = self.field.background(background);
+        self
+    }
+
+    pub fn padding(mut self, x: f32, y: f32) -> Self {
+        self.field = self.field.padding(x, y);
+        self
+    }
+
+    pub fn plain(mut self) -> Self {
+        self.field = self.field.plain();
         self
     }
 }

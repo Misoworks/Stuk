@@ -1,0 +1,18 @@
+[package]
+name = "stuk-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+stuk-manifest.workspace = true
+stuk-actions.workspace = true
+stuk-core.workspace = true
+stuk-layout.workspace = true
+stuk-render.workspace = true
+stuk-style.workspace = true
+stuk-text.workspace = true
+stuk-platform.workspace = true
+stuk-settings.workspace = true
+stuk-accessibility.workspace = true

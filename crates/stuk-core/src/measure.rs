@@ -71,7 +71,7 @@ fn measure_text(text: &TextElement) -> LayoutItem {
 }
 
 fn measure_button(button: &ButtonElement) -> LayoutItem {
-    let width = (button.label.chars().count() as f32 * 8.0 + 32.0).clamp(88.0, 220.0);
+    let width = (button.label.chars().count() as f32 * 8.5 + 40.0).clamp(72.0, 220.0);
     LayoutItem::fit(Size::new(width, 40.0))
 }
 
@@ -144,7 +144,8 @@ fn option_row_width(options: &[ControlOptionElement]) -> f32 {
 
 fn measure_text_field(field: &TextFieldElement) -> LayoutItem {
     let label_height = f32::from(field.label.is_some()) * 22.0;
-    LayoutItem::fit(Size::new(280.0, 38.0 + label_height))
+    let field_height = if field.multiline { 150.0 } else { 40.0 };
+    LayoutItem::fit(Size::new(280.0, field_height + label_height))
 }
 
 fn measure_stack(stack: &StackElement) -> LayoutItem {
@@ -329,15 +330,14 @@ fn track_natural_sizes(tracks: &[GridTrack], items: &[GridItem], columns: bool) 
 
 fn measure_frame(frame: &FrameElement) -> LayoutItem {
     let child = measure_element(&frame.child);
-    let visual = LayoutItem::fit(child.size)
-        .with_width(frame.width)
-        .with_height(frame.height)
-        .size;
+    let visual = Size::new(
+        child.size.width + frame.margin.horizontal(),
+        child.size.height + frame.margin.vertical(),
+    );
     constrained_item(
-        LayoutItem::fit(Size::new(
-            visual.width + frame.margin.horizontal(),
-            visual.height + frame.margin.vertical(),
-        )),
+        LayoutItem::fit(visual)
+            .with_width(frame.width)
+            .with_height(frame.height),
         SizeConstraints {
             min_width: frame.min_width,
             max_width: frame.max_width,

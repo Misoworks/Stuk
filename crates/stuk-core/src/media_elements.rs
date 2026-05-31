@@ -18,6 +18,7 @@ pub struct MediaElement {
     pub opacity: f32,
     pub tint: Option<Color>,
     pub decorative: bool,
+    pub outline: bool,
 }
 
 impl MediaElement {
@@ -32,6 +33,7 @@ impl MediaElement {
             opacity: 1.0,
             tint: None,
             decorative: false,
+            outline: source == MediaSource::Image,
         }
     }
 }

@@ -410,6 +410,7 @@ mod tests {
                     variant: ButtonVariant::Primary,
                     action: Some("document.save".to_string()),
                     disabled: false,
+                    text_align: stuk_style::ControlTextAlign::Center,
                 }),
                 Element::Toggle(ToggleElement {
                     label: "Sync".to_string(),

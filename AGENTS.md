@@ -5,9 +5,23 @@
 - Runtime, view tree, component model, and lifecycle code belong in `crates/stuk-core`.
 - Layout primitives belong in `crates/stuk-layout`.
 - Display-list and renderer code belong in `crates/stuk-render`.
+- Styling tokens, themes, colors, and materials belong in `crates/stuk-style`.
+- Text layout, input state, and editing belong in `cruk-stuk-text`.
 - Built-in widget builders belong in `crates/stuk-widgets`.
 - Platform windowing and OS integration belong in `crates/stuk-platform`.
+- Staccato/Baton platform integration belongs in `crates/stuk-platform-staccato`.
+- Wayland platform integration belongs in `crates/stuk-platform-wayland`.
+- Windows platform integration belongs in `crates/stuk-platform-windows`.
+- macOS platform integration belongs in `crates/stuk-platform-macos`.
+- Accessibility tree and node generation belong in `crates/stuk-accessibility`.
+- Actions, shortcuts, and command registration belong in `crates/stuk-actions`.
+- Settings schema and storage belong in `crates/stuk-settings`.
 - App metadata, permissions, windows, actions, and settings schema parsing belong in `crates/stuk-manifest`.
+- Devtools, inspector, preview, and bundle planning belong in `crates/stuk-devtools`.
 - CLI behavior belongs in `crates/stuk-cli`.
+- CEF-backed webview window support belongs in `crates/stuk-webview`.
+- Shared CEF runtime detection and management belong in `crates/stuk-web-runtime`.
+- Integration tests live in `tests/integration/`.
+- Benchmarks live in `benches/`.
 - Prefer semantic materials (`Maris`, `Luca`, `Surface`) over hardcoded blur behavior.
 - Run `cargo fmt`, `cargo build --workspace`, and `cargo test --workspace` after code changes.

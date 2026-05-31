@@ -6,7 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+arboard = { version = "3.6.1", features = ["wayland-data-control"] }
 pollster.workspace = true
+raw-window-handle.workspace = true
 stuk-accessibility.workspace = true
 stuk-actions.workspace = true
 stuk-layout.workspace = true

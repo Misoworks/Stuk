@@ -1,0 +1,57 @@
+[app]
+id = "dev.local.test-app"
+name = "Test App"
+version = "0.1.0"
+
+[window.main]
+title = "Test App"
+width = 980
+height = 680
+min_width = 420
+min_height = 280
+material = "maris"
+chrome = "system"
+
+[permissions]
+network = false
+notifications = false
+
+[actions.app.new_document]
+label = "New Document"
+shortcut = "Ctrl+N"
+
+[actions.app.settings]
+label = "Settings"
+shortcut = "Ctrl+,"
+
+[actions.settings.sync.enabled]
+label = "Toggle Sync"
+
+[actions.notes.new]
+label = "New Note"
+shortcut = "Ctrl+Alt+N"
+
+[actions.notes.search]
+label = "Search"
+shortcut = "Ctrl+F"
+
+[actions.document.save]
+label = "Save"
+shortcut = "Ctrl+S"
+
+[settings.appearance.theme]
+type = "enum"
+label = "Theme"
+values = ["system", "light", "dark"]
+default = "system"
+
+[settings.appearance.density]
+type = "enum"
+label = "Density"
+values = ["compact", "regular", "touch"]
+default = "regular"
+
+[settings.sync.enabled]
+type = "boolean"
+label = "Enable sync"
+default = false

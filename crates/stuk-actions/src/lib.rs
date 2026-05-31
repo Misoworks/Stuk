@@ -213,17 +213,27 @@ pub struct Modifiers {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActionHitRegion {
     pub rect: Rect,
+    pub region_id: String,
     pub action_id: String,
     pub enabled: bool,
 }
 
 impl ActionHitRegion {
     pub fn new(rect: Rect, action_id: impl Into<String>) -> Self {
+        let action_id = action_id.into();
         Self {
+            region_id: Self::region_id_for(rect, &action_id),
             rect,
-            action_id: action_id.into(),
+            action_id,
             enabled: true,
         }
+    }
+
+    pub fn region_id_for(rect: Rect, action_id: &str) -> String {
+        format!(
+            "{action_id}@{:.1},{:.1},{:.1},{:.1}",
+            rect.x, rect.y, rect.width, rect.height
+        )
     }
 
     pub fn contains(&self, x: f32, y: f32) -> bool {

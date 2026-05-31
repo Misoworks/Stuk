@@ -100,6 +100,7 @@ impl Platform for StaccatoPlatform {
 pub fn staccato_capabilities() -> PlatformCapabilities {
     PlatformCapabilities {
         live_blur: true,
+        transparent_windows: true,
         wallpaper_material: true,
         shell_tabs: true,
         command_palette: true,

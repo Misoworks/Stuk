@@ -2,9 +2,9 @@ use stuk_actions::ActionHitRegion;
 use stuk_layout::{
     Axis, FlexItem, GridItem, Rect, Size, flex_layout, grid_layout, stack_layout_items,
 };
-use stuk_platform::{NativeFrame, WindowChrome};
+use stuk_platform::{NativeFrame, WindowBackgroundEffect, WindowChrome};
 use stuk_render::{DisplayList, RectCommand, RoundedRectCommand, TextCommand};
-use stuk_style::{Material, Theme};
+use stuk_style::{Material, NumberSpacing, TextAlign, TextWrap, Theme};
 
 use crate::accessibility::build_accessibility_tree;
 use crate::app::{Cx, View};
@@ -23,12 +23,20 @@ use crate::measure::measure_element;
 use crate::media_render::render_media;
 use crate::option_render::{render_segmented_control, render_tabs};
 use crate::surface_render::render_surface_commands;
+use crate::window_chrome_render::{content_bounds, render_window_chrome};
 
 pub struct BuiltWindow {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    pub resizable: bool,
+    pub visible: bool,
+    pub active: bool,
+    pub always_on_top: bool,
+    pub continuous_redraw: bool,
     pub chrome: WindowChrome,
+    pub transparent: bool,
+    pub background_effect: WindowBackgroundEffect,
     material: Material,
     theme: Theme,
     content: Element,
@@ -43,7 +51,14 @@ pub(crate) fn build_window<V: View>(root: &V, cx: &mut Cx) -> BuiltWindow {
             title: window.title,
             width: window.width,
             height: window.height,
+            resizable: window.resizable,
+            visible: window.visible,
+            active: window.active,
+            always_on_top: window.always_on_top,
             chrome: window.chrome,
+            transparent: window.transparent,
+            background_effect: window.background_effect,
+            continuous_redraw: window.continuous_redraw,
             material: window.material,
             theme,
             content: window
@@ -53,9 +68,16 @@ pub(crate) fn build_window<V: View>(root: &V, cx: &mut Cx) -> BuiltWindow {
         },
         element => BuiltWindow {
             title: app_name.to_string(),
-            width: 980,
-            height: 680,
+            width: 760,
+            height: 520,
+            resizable: true,
+            visible: true,
+            active: true,
+            always_on_top: false,
             chrome: WindowChrome::System,
+            transparent: false,
+            background_effect: WindowBackgroundEffect::None,
+            continuous_redraw: false,
             material: Material::Maris,
             theme,
             content: element,
@@ -63,38 +85,68 @@ pub(crate) fn build_window<V: View>(root: &V, cx: &mut Cx) -> BuiltWindow {
     }
 }
 
-pub(crate) fn render_window(window: &BuiltWindow, size: Size) -> NativeFrame {
+pub(crate) fn render_window(
+    window: &BuiltWindow,
+    size: Size,
+    hovered: Option<&str>,
+    pressed: Option<&str>,
+    focused: Option<&str>,
+) -> NativeFrame {
     let theme = &window.theme;
-    let mut list = DisplayList::new(window.material.fallback_color_for(theme));
+    let mut list = DisplayList::new(window_background(window, theme));
+    list.hovered_region = hovered.map(str::to_string);
+    list.pressed_region = pressed.map(str::to_string);
+    list.focused_region = focused.map(str::to_string);
     let mut hit_regions = Vec::new();
-    let bounds = Rect::new(
-        28.0,
-        28.0,
-        (size.width - 56.0).max(1.0),
-        (size.height - 56.0).max(1.0),
-    );
-    let content_size = measure_element(&window.content).size;
-    let panel = Rect::new(
-        bounds.x,
-        bounds.y,
-        (content_size.width + 48.0).max(360.0).min(bounds.width),
-        (content_size.height + 48.0).max(172.0).min(bounds.height),
-    );
+    let bounds = Rect::new(0.0, 0.0, size.width.max(1.0), size.height.max(1.0));
+    let panel = bounds;
+    let panel_radius = if window.chrome.uses_native_decorations() {
+        0.0
+    } else {
+        theme.radius.lg
+    };
 
     list.push(RoundedRectCommand {
         x: panel.x,
         y: panel.y,
         width: panel.width,
         height: panel.height,
-        radius: theme.radius.lg,
-        color: Material::SurfaceElevated.fallback_color_for(theme),
+        radius: panel_radius,
+        color: window_panel_color(window, theme),
     });
-    render_element(&window.content, panel, theme, &mut list, &mut hit_regions);
+    render_window_chrome(
+        window.chrome,
+        &window.title,
+        panel,
+        panel_radius,
+        theme,
+        &mut list,
+        &mut hit_regions,
+    );
+    let content = content_bounds(window.chrome, panel);
+    render_element(&window.content, content, theme, &mut list, &mut hit_regions);
     NativeFrame {
         display_list: list,
         hit_regions,
-        accessibility_tree: build_accessibility_tree(&window.title, &window.content, panel),
+        accessibility_tree: build_accessibility_tree(&window.title, &window.content, content),
+        hovered_id: hovered.map(str::to_string),
+        pressed_id: pressed.map(str::to_string),
+        continuous_redraw: window.continuous_redraw,
     }
+}
+
+fn window_background(window: &BuiltWindow, theme: &Theme) -> stuk_style::Color {
+    if window.transparent {
+        return stuk_style::Color::rgba(0.0, 0.0, 0.0, 0.0);
+    }
+    window.material.fallback_color_for(theme)
+}
+
+fn window_panel_color(window: &BuiltWindow, theme: &Theme) -> stuk_style::Color {
+    if window.transparent {
+        return theme.colors.window.opacity(0.84);
+    }
+    Material::SurfaceElevated.fallback_color_for(theme)
 }
 
 fn render_element(
@@ -130,7 +182,7 @@ fn render_element(
             render_element(&tooltip.child, bounds, theme, list, hit_regions);
             render_tooltip_label(tooltip, bounds, theme, list);
         }
-        Element::TextField(field) => render_text_field(field, bounds, theme, list),
+        Element::TextField(field) => render_text_field(field, bounds, theme, list, hit_regions),
         Element::Stack(stack) => render_stack(stack, bounds, theme, list, hit_regions),
         Element::Flex(flex) => render_flex(flex, bounds, theme, list, hit_regions),
         Element::Grid(grid) => render_grid(grid, bounds, theme, list, hit_regions),
@@ -268,11 +320,14 @@ fn render_text(text: &TextElement, bounds: Rect, theme: &Theme, list: &mut Displ
         text: text.text.clone(),
         x: bounds.x,
         y: bounds.y,
-        width: bounds.width,
+        width: bounds.width.max(1.0),
         height: bounds.height.max(text.line_height),
         size: text.size,
         line_height: text.line_height,
         color: theme.resolve_color(text.color),
+        wrap: text.wrap,
+        align: text.align,
+        number_spacing: text.number_spacing,
     });
 }
 
@@ -317,14 +372,7 @@ fn render_scroll_view(
     list: &mut DisplayList,
     hit_regions: &mut Vec<ActionHitRegion>,
 ) {
-    list.push(RoundedRectCommand {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        radius: theme.radius.md,
-        color: theme.colors.surface,
-    });
+    let _ = theme;
     render_element(&scroll_view.child, bounds, theme, list, hit_regions);
 }
 
@@ -380,13 +428,12 @@ fn render_sidebar(
     list: &mut DisplayList,
     hit_regions: &mut Vec<ActionHitRegion>,
 ) {
-    list.push(RoundedRectCommand {
+    list.push(RectCommand {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
         height: bounds.height,
-        radius: theme.radius.lg,
-        color: Material::Sidebar.fallback_color_for(theme),
+        color: Material::Sidebar.fallback_color_for(theme).opacity(0.72),
     });
     let stack = crate::element::StackElement {
         axis: Axis::Vertical,
@@ -420,6 +467,9 @@ fn render_toolbar(
         size: 18.0,
         line_height: 24.0,
         color: theme.colors.text,
+        wrap: TextWrap::Balance,
+        align: TextAlign::Start,
+        number_spacing: NumberSpacing::Proportional,
     });
     let actions = Rect::new(
         bounds.x + bounds.width * 0.48,
@@ -445,18 +495,19 @@ fn render_split_view(
 ) {
     let sidebar_width = (bounds.width * split_view.ratio).clamp(160.0, bounds.width * 0.5);
     let sidebar = Rect::new(bounds.x, bounds.y, sidebar_width, bounds.height);
+    let gap = 18.0;
     let main = Rect::new(
-        bounds.x + sidebar_width + 14.0,
+        bounds.x + sidebar_width + gap,
         bounds.y,
-        (bounds.width - sidebar_width - 14.0).max(1.0),
+        (bounds.width - sidebar_width - gap).max(1.0),
         bounds.height,
     );
     render_element(&split_view.sidebar, sidebar, theme, list, hit_regions);
     list.push(RectCommand {
-        x: bounds.x + sidebar_width + 6.0,
-        y: bounds.y + 8.0,
+        x: bounds.x + sidebar_width,
+        y: bounds.y,
         width: 1.0,
-        height: (bounds.height - 16.0).max(1.0),
+        height: bounds.height.max(1.0),
         color: theme
             .colors
             .outline

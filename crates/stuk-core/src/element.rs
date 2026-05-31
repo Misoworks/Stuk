@@ -1,6 +1,6 @@
 use stuk_layout::{Axis, EdgeInsets, Length};
-use stuk_platform::WindowChrome;
-use stuk_style::{ButtonVariant, Color, Material};
+use stuk_platform::{WindowBackgroundEffect, WindowChrome};
+use stuk_style::{ButtonVariant, Color, Material, NumberSpacing, TextWrap};
 
 use crate::control_elements::{
     AvatarElement, BadgeElement, CardElement, CheckboxElement, ProgressBarElement, RadioElement,
@@ -134,9 +134,16 @@ pub struct WindowElement {
     pub title: String,
     pub material: Material,
     pub chrome: WindowChrome,
+    pub transparent: bool,
+    pub background_effect: WindowBackgroundEffect,
     pub content: Option<Box<Element>>,
     pub width: u32,
     pub height: u32,
+    pub resizable: bool,
+    pub visible: bool,
+    pub active: bool,
+    pub always_on_top: bool,
+    pub continuous_redraw: bool,
 }
 
 impl Default for WindowElement {
@@ -145,9 +152,16 @@ impl Default for WindowElement {
             title: "Stuk".to_string(),
             material: Material::Maris,
             chrome: WindowChrome::System,
+            transparent: false,
+            background_effect: WindowBackgroundEffect::None,
             content: None,
-            width: 980,
-            height: 680,
+            width: 760,
+            height: 520,
+            resizable: true,
+            visible: true,
+            active: true,
+            always_on_top: false,
+            continuous_redraw: false,
         }
     }
 }
@@ -158,6 +172,9 @@ pub struct TextElement {
     pub size: f32,
     pub line_height: f32,
     pub color: Color,
+    pub wrap: TextWrap,
+    pub number_spacing: NumberSpacing,
+    pub align: stuk_style::TextAlign,
 }
 
 #[derive(Clone, Debug)]
@@ -166,6 +183,7 @@ pub struct ButtonElement {
     pub variant: ButtonVariant,
     pub action: Option<String>,
     pub disabled: bool,
+    pub text_align: stuk_style::ControlTextAlign,
 }
 
 #[derive(Clone, Debug)]
@@ -190,6 +208,13 @@ pub struct TextFieldElement {
     pub text: String,
     pub placeholder: String,
     pub disabled: bool,
+    pub focused: bool,
+    pub multiline: bool,
+    pub caret: Option<usize>,
+    pub selection: Option<(usize, usize)>,
+    pub background: bool,
+    pub padding_x: f32,
+    pub padding_y: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -269,6 +294,8 @@ pub struct ScrollViewElement {
     pub child: Box<Element>,
     pub width: Length,
     pub height: Length,
+    pub scroll_offset_x: f32,
+    pub scroll_offset_y: f32,
 }
 
 impl ScrollViewElement {
@@ -277,6 +304,8 @@ impl ScrollViewElement {
             child: Box::new(child.into()),
             width: Length::Fit,
             height: Length::Fit,
+            scroll_offset_x: 0.0,
+            scroll_offset_y: 0.0,
         }
     }
 }

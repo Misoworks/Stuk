@@ -92,6 +92,53 @@ impl From<Flex> for Element {
 }
 
 #[derive(Clone, Debug)]
+pub struct Center {
+    child: Element,
+    padding: f32,
+    fill_width: bool,
+    fill_height: bool,
+}
+
+impl Center {
+    pub fn new(child: impl Into<Element>) -> Self {
+        Self {
+            child: child.into(),
+            padding: 0.0,
+            fill_width: true,
+            fill_height: true,
+        }
+    }
+
+    pub fn padding(mut self, padding: f32) -> Self {
+        self.padding = padding;
+        self
+    }
+
+    pub fn fit(mut self) -> Self {
+        self.fill_width = false;
+        self.fill_height = false;
+        self
+    }
+}
+
+impl From<Center> for Element {
+    fn from(center: Center) -> Self {
+        let mut flex = Flex::column()
+            .padding(center.padding)
+            .align(FlexAlign::Center)
+            .justify(FlexJustify::Center)
+            .child(center.child);
+        if center.fill_width {
+            flex = flex.fill_width();
+        }
+        if center.fill_height {
+            flex = flex.fill_height();
+        }
+        flex.into()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Grid {
     element: GridElement,
 }

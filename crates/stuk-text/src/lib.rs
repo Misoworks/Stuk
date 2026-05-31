@@ -141,6 +141,17 @@ impl TextInputState {
         self.selection = TextSelection::new(0, char_len(&self.text));
     }
 
+    pub fn select_word_at(&mut self, offset: usize) {
+        let offset = offset.min(char_len(&self.text));
+        let start = previous_word_boundary(&self.text, offset);
+        let end = next_word_boundary(&self.text, offset);
+        self.selection = if start == end {
+            TextSelection::caret(offset)
+        } else {
+            TextSelection::new(start, end)
+        };
+    }
+
     pub fn selected_text(&self) -> &str {
         let range = self.selection.range();
         self.text_in_range(range)

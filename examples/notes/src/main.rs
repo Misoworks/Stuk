@@ -8,229 +8,238 @@ fn main() -> stuk::Result {
         .run()
 }
 
+#[derive(Clone, Debug)]
+struct Note {
+    title: TextInputState,
+    body: TextInputState,
+    saved: bool,
+}
+
 struct NotesWindow {
-    drafts: u32,
-    saves: u32,
-    recent_notes: Resource<Vec<String>, String>,
-    save_note: Mutation<String, String, String>,
+    notes: Vec<Note>,
+    selected: usize,
+    input: TextInputManager,
 }
 
 impl Default for NotesWindow {
     fn default() -> Self {
         Self {
-            drafts: 0,
-            saves: 0,
-            recent_notes: resource("notes.recent", || async {
-                Ok::<_, String>(vec![
-                    "Project outline".to_string(),
-                    "Meeting notes".to_string(),
-                    "Release checklist".to_string(),
-                ])
-            }),
-            save_note: mutation("notes.save", |body: String| async move {
-                Ok::<_, String>(format!("Saved {body}"))
-            }),
+            notes: vec![
+                Note {
+                    title: TextInputState::new("Product notes"),
+                    body: TextInputState::new(
+                        "Keep the app monochrome, calm, and functional.\nMake editing fast enough to feel native.",
+                    ),
+                    saved: true,
+                },
+                Note {
+                    title: TextInputState::new("Runtime checklist"),
+                    body: TextInputState::new(
+                        "Install the embedded CEF runtime locally.\nShow a native installing window while it downloads.",
+                    ),
+                    saved: true,
+                },
+                Note {
+                    title: TextInputState::new("Design pass"),
+                    body: TextInputState::new(
+                        "Remove decorative cards.\nUse square sidebars and restrained controls.",
+                    ),
+                    saved: false,
+                },
+            ],
+            selected: 0,
+            input: TextInputManager::default(),
         }
     }
 }
 
 impl View for NotesWindow {
-    fn view(&self, cx: &mut Cx) -> Element {
-        cx.staccato().set_tab_title("Project outline");
-        cx.staccato().set_preferred_split(SplitHint::Right);
-        cx.session().set_document_id("note.project-outline");
-        cx.session()
-            .set_restore_payload("{\"note\":\"project-outline\"}");
-
-        let mut note_list = VirtualList::new()
-            .row_height(42.0)
-            .viewport_height(220.0)
-            .overscan(2)
-            .row(
-                "project-outline",
-                Button::primary("Project outline").action("notes.select"),
-            )
-            .row(
-                "meeting-notes",
-                Button::ghost("Meeting notes").action("notes.select"),
-            )
-            .row(
-                "release-checklist",
-                Button::ghost("Release checklist").action("notes.select"),
-            );
-
-        for index in 0..self.drafts {
-            note_list = note_list.row(
-                format!("draft-{}", index + 1),
-                Button::secondary(format!("Untitled draft {}", index + 1)).action("notes.select"),
-            );
-        }
+    fn view(&self, _cx: &mut Cx) -> Element {
+        let note = &self.notes[self.selected];
+        let title_selection = note.title.selection();
+        let body_selection = note.body.selection();
 
         Window::new()
             .title("Notes")
-            .material(Material::Maris)
-            .chrome(WindowChrome::Compact)
-            .size(1040, 680)
+            .size(920, 600)
+            .glass()
             .content(
                 SplitView::new(
                     Sidebar::new()
-                        .child(Text::title("Notes"))
-                        .child(Button::primary("New Note").action("notes.new"))
-                        .child(Divider::horizontal())
+                        .width(260.0)
+                        .child(Text::new("Notes").size(22.0))
                         .child(
-                            Tree::new().item(
-                                TreeNode::new("Workspace")
-                                    .action("notes.select")
-                                    .expanded(true)
-                                    .child(TreeNode::new("Project").action("notes.select"))
-                                    .child(TreeNode::new("Archive").action("notes.select")),
+                            Frame::new(Button::primary("New").align_start().action("notes.new"))
+                                .fill_width(),
+                        )
+                        .child(Divider::horizontal())
+                        .child(self.note_list())
+                        .child(Spacer::new())
+                        .child(Text::new(format!("{} notes", self.notes.len())).muted()),
+                    Flex::column()
+                        .padding(28.0)
+                        .gap(12.0)
+                        .align(FlexAlign::Stretch)
+                        .fill_width()
+                        .fill_height()
+                        .child(
+                            Grid::new(
+                                vec![
+                                    GridTrack::fraction(1.0),
+                                    GridTrack::fixed(78.0),
+                                    GridTrack::fixed(82.0),
+                                ],
+                                vec![GridTrack::fixed(40.0)],
+                            )
+                            .column_gap(10.0)
+                            .fill_width()
+                            .cell(
+                                0,
+                                0,
+                                TextField::new(note.title.text())
+                                    .placeholder("Title")
+                                    .focused(self.input.is_focused("Title"))
+                                    .selection(title_selection.anchor, title_selection.focus),
+                            )
+                            .cell(1, 0, Button::secondary("Save").action("notes.save"))
+                            .cell(
+                                2,
+                                0,
+                                Button::ghost("Delete").action("notes.delete"),
                             ),
                         )
-                        .child(Divider::horizontal())
-                        .child(note_list)
-                        .child(Spacer::new())
-                        .child(Text::new(format!("Saved {} times", self.saves)).muted()),
-                    VStack::new()
-                        .padding(24.0)
-                        .spacing(14.0)
-                        .child(
-                            Toolbar::new("Project outline")
-                                .child(Button::primary("Save").action("notes.save"))
-                                .child(Badge::new(format!("{} saves", self.saves)))
-                                .child(IconButton::new("I", "Inspect").action("stuk.inspect")),
-                        )
-                        .child(
-                            Tabs::new()
-                                .tab("overview", "Overview")
-                                .tab("editor", "Editor")
-                                .tab("history", "History")
-                                .selected(1)
-                                .action_prefix("notes.view"),
-                        )
-                        .child(SearchField::new("").placeholder("Find notes"))
-                        .child(Divider::horizontal())
-                        .child(
-                            ScrollView::new(
-                                VStack::new()
-                                    .spacing(12.0)
-                                    .child(
-                                        Surface::new(
-                                            HStack::new()
-                                                .spacing(10.0)
-                                                .child(
-                                                    Svg::new("icons/note")
-                                                        .decorative()
-                                                        .size(22.0, 22.0)
-                                                        .tint(Color::ACCENT),
-                                                )
-                                                .child(Avatar::new("Mira Sol", "MS"))
-                                                .child(Text::title("Project outline")),
-                                        )
-                                        .material(Material::SurfaceElevated)
-                                        .margin(2.0)
-                                        .padding(16.0)
-                                        .corner_radius(16.0)
-                                        .border(SurfaceBorder::subtle())
-                                        .shadow(SurfaceShadow::soft())
-                                        .min_width(280.0)
-                                        .max_width(520.0),
-                                    )
-                                    .child(Text::new("Write the first native Stuk notes workflow."))
-                                    .child(
-                                        TextArea::new("Use SplitView, Toolbar, Sidebar, and List.")
-                                            .label("Body"),
-                                    )
-                                    .child(
-                                        Table::new()
-                                            .table_column(TableColumn::new("Field").width(120.0))
-                                            .column("Value")
-                                            .row(
-                                                TableRow::new()
-                                                    .text_cell("Status")
-                                                    .cell(Badge::new("Draft")),
-                                            )
-                                            .row(
-                                                TableRow::new()
-                                                    .text_cell("Owner")
-                                                    .text_cell("Mira Sol"),
-                                            ),
-                                    )
-                                    .child(
-                                        MutationView::new(self.save_note.clone())
-                                            .idle(|| Text::new("No save yet").muted())
-                                            .pending(|| Spinner::new("Saving note"))
-                                            .success(|message| Badge::new(message.clone()))
-                                            .error(|error| ErrorView::new(error.clone())),
-                                    )
-                                    .child(
-                                        ResourceView::new(self.recent_notes.clone())
-                                            .loading(|| Spinner::new("Loading recent notes"))
-                                            .empty_when(|notes| notes.is_empty())
-                                            .empty(|| EmptyState::new("No recent notes"))
-                                            .error(|error| ErrorView::new(error.clone()))
-                                            .data(recent_notes_list),
-                                    )
-                                    .child(
-                                        EmptyState::new("No attachments")
-                                            .message("Drop support can connect here once platform drag and drop lands."),
-                                    ),
+                        .flex_child(
+                            FlexChildElement::new(
+                                Frame::new(
+                                    TextArea::new(note.body.text())
+                                        .placeholder("Body")
+                                        .focused(self.input.is_focused("Body"))
+                                        .selection(body_selection.anchor, body_selection.focus),
+                                )
+                                .fill_width()
+                                .fill_height(),
                             )
-                            .fill_width()
-                            .height(380.0),
+                            .grow(1.0),
                         ),
                 )
-                .initial_ratio(0.3)
+                .initial_ratio(0.28)
                 .resizable(true),
             )
             .into()
     }
 
     fn actions(&self, _cx: &mut Cx) -> Vec<ActionDescriptor> {
-        vec![
-            ActionDescriptor::new("notes.new", "New Note").shortcut(Shortcut::new(
-                Modifiers {
-                    ctrl: true,
-                    ..Modifiers::default()
-                },
-                "N",
-            )),
-            ActionDescriptor::new("notes.save", "Save Note").shortcut(Shortcut::new(
-                Modifiers {
-                    ctrl: true,
-                    ..Modifiers::default()
-                },
-                "S",
-            )),
-            ActionDescriptor::new("notes.view.overview", "Show Overview"),
-            ActionDescriptor::new("notes.view.editor", "Show Editor"),
-            ActionDescriptor::new("notes.view.history", "Show History"),
-            ActionDescriptor::new("notes.select", "Select Note"),
-            ActionDescriptor::new("stuk.inspect", "Inspect"),
-        ]
+        let mut actions = vec![
+            ActionDescriptor::new("notes.new", "New Note")
+                .shortcut_str("Ctrl+N")
+                .unwrap(),
+            ActionDescriptor::new("notes.save", "Save Note")
+                .shortcut_str("Ctrl+S")
+                .unwrap(),
+            ActionDescriptor::new("notes.delete", "Delete Note"),
+        ];
+
+        for index in 0..self.notes.len() {
+            actions.push(ActionDescriptor::new(
+                format!("notes.select.{index}"),
+                format!("Select note {}", index + 1),
+            ));
+        }
+
+        actions
     }
 
     fn handle_action(&mut self, action_id: &str, _cx: &mut Cx) {
-        match action_id {
-            "notes.new" => self.drafts += 1,
-            "notes.save" => {
-                self.saves += 1;
-                self.save_note.submit(format!("draft {}", self.saves));
+        if let Some(index) = action_id
+            .strip_prefix("notes.select.")
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            if index < self.notes.len() {
+                self.selected = index;
+                self.input.clear_focus();
             }
-            _ => {}
+            return;
+        }
+
+        match action_id {
+            "notes.new" => self.new_note(),
+            "notes.save" => self.current_note_mut().saved = true,
+            "notes.delete" => self.delete_note(),
+            _ => self.handle_input_action(action_id),
         }
     }
 }
 
-fn recent_notes_list(notes: &Vec<String>) -> Element {
-    let mut list = List::new().spacing(6.0);
+impl NotesWindow {
+    fn note_list(&self) -> Element {
+        let mut stack = VStack::new().spacing(8.0);
 
-    for note in notes {
-        list = list.child(Text::new(note.clone()).muted());
+        for (index, note) in self.notes.iter().enumerate() {
+            let button = if index == self.selected {
+                Button::primary(note.title.text())
+            } else {
+                Button::ghost(note.title.text())
+            }
+            .align_start()
+            .action(format!("notes.select.{index}"));
+            stack = stack.child(Frame::new(button).fill_width());
+        }
+
+        stack.into()
     }
 
-    VStack::new()
-        .spacing(8.0)
-        .child(Text::new("Recent notes").muted())
-        .child(list)
-        .into()
+    fn current_note_mut(&mut self) -> &mut Note {
+        &mut self.notes[self.selected]
+    }
+
+    fn new_note(&mut self) {
+        self.notes.push(Note {
+            title: TextInputState::new(format!("Untitled {}", self.notes.len() + 1)),
+            body: TextInputState::new(""),
+            saved: false,
+        });
+        self.selected = self.notes.len() - 1;
+        let mut fields = NoteInputs {
+            note: &mut self.notes[self.selected],
+        };
+        self.input.focus_input("Title", &mut fields);
+    }
+
+    fn delete_note(&mut self) {
+        if self.notes.len() == 1 {
+            self.notes[0].title.set_text("Untitled");
+            self.notes[0].body.set_text("");
+            self.notes[0].saved = false;
+            self.selected = 0;
+            return;
+        }
+
+        self.notes.remove(self.selected);
+        self.selected = self.selected.min(self.notes.len() - 1);
+        self.input.clear_focus();
+    }
+
+    fn handle_input_action(&mut self, action_id: &str) {
+        let input = &mut self.input;
+        let note = &mut self.notes[self.selected];
+        let mut fields = NoteInputs { note };
+        let result = input.handle_action(action_id, &mut fields);
+        if result.changed {
+            self.notes[self.selected].saved = false;
+        }
+    }
+}
+
+struct NoteInputs<'a> {
+    note: &'a mut Note,
+}
+
+impl TextInputResolver for NoteInputs<'_> {
+    fn input_mut(&mut self, id: &str) -> Option<&mut TextInputState> {
+        match id {
+            "Title" => Some(&mut self.note.title),
+            "Body" => Some(&mut self.note.body),
+            _ => None,
+        }
+    }
 }

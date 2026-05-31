@@ -209,6 +209,7 @@ impl Default for GenericPlatform {
 
 impl Platform for GenericPlatform {
     fn create_window(&mut self, options: WindowOptions) -> Result<WindowHandle, PlatformError> {
+        let options = options.resolved_for_capabilities(self.capabilities);
         let id = WindowId(self.next_window_id);
         self.next_window_id += 1;
         self.windows.insert(

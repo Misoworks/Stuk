@@ -9,14 +9,28 @@ use stuk_style::{Material, Theme};
 #[derive(Debug)]
 pub struct MacosPlatform {
     inner: GenericPlatform,
+    vibrancy: MacosVibrancy,
 }
 
 impl MacosPlatform {
     pub fn new() -> Self {
+        Self::with_vibrancy(MacosVibrancy::HudWindow)
+    }
+
+    pub fn with_vibrancy(vibrancy: MacosVibrancy) -> Self {
         Self {
-            inner: GenericPlatform::with_capabilities(macos_capabilities()),
+            inner: GenericPlatform::with_capabilities(macos_capabilities(vibrancy)),
+            vibrancy,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MacosVibrancy {
+    HudWindow,
+    Sidebar,
+    UnderWindowBackground,
+    Disabled,
 }
 
 impl Default for MacosPlatform {
@@ -28,14 +42,20 @@ impl Default for MacosPlatform {
 impl MaterialResolver for MacosPlatform {
     fn resolve_material(&self, material: &Material, theme: &Theme) -> MaterialResolution {
         match material {
-            Material::Luca | Material::Popover | Material::Dialog => {
+            Material::Luca | Material::Popover | Material::Dialog
+                if self.vibrancy != MacosVibrancy::Disabled =>
+            {
                 MaterialResolution::with_effect(
                     material,
                     theme,
-                    MaterialEffect::NativeMaterial { name: "vibrancy" },
+                    MaterialEffect::NativeMaterial {
+                        name: self.vibrancy.native_name(),
+                    },
                 )
             }
-            Material::Maris | Material::Window | Material::Sidebar => {
+            Material::Maris | Material::Window | Material::Sidebar
+                if self.vibrancy != MacosVibrancy::Disabled =>
+            {
                 MaterialResolution::with_effect(
                     material,
                     theme,
@@ -45,6 +65,17 @@ impl MaterialResolver for MacosPlatform {
                 )
             }
             _ => MaterialResolution::fallback(material, theme),
+        }
+    }
+}
+
+impl MacosVibrancy {
+    fn native_name(self) -> &'static str {
+        match self {
+            Self::HudWindow => "hud-window",
+            Self::Sidebar => "sidebar",
+            Self::UnderWindowBackground => "under-window-background",
+            Self::Disabled => "solid",
         }
     }
 }
@@ -95,9 +126,10 @@ impl Platform for MacosPlatform {
     }
 }
 
-pub fn macos_capabilities() -> PlatformCapabilities {
+pub fn macos_capabilities(vibrancy: MacosVibrancy) -> PlatformCapabilities {
     PlatformCapabilities {
-        live_blur: true,
+        live_blur: vibrancy != MacosVibrancy::Disabled,
+        transparent_windows: vibrancy != MacosVibrancy::Disabled,
         wallpaper_material: true,
         shell_tabs: false,
         command_palette: false,
@@ -119,7 +151,7 @@ mod tests {
 
         assert_eq!(
             platform.resolve_material(&Material::Luca, &theme).effect,
-            MaterialEffect::NativeMaterial { name: "vibrancy" }
+            MaterialEffect::NativeMaterial { name: "hud-window" }
         );
         assert_eq!(
             platform.resolve_material(&Material::Maris, &theme).effect,
@@ -128,5 +160,18 @@ mod tests {
             }
         );
         assert!(platform.platform_capabilities().native_notifications);
+    }
+
+    #[test]
+    fn macos_can_disable_vibrancy() {
+        let platform = MacosPlatform::with_vibrancy(MacosVibrancy::Disabled);
+
+        assert_eq!(
+            platform
+                .resolve_material(&Material::Luca, &Theme::dark())
+                .effect,
+            MaterialEffect::TintedFallback
+        );
+        assert!(!platform.platform_capabilities().transparent_windows);
     }
 }
