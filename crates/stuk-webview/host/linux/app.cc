@@ -13,6 +13,7 @@
 #include "include/views/cef_browser_view.h"
 #include "include/views/cef_window.h"
 #include "include/wrapper/cef_helpers.h"
+#include "osr_handler.h"
 
 namespace {
 
@@ -190,6 +191,11 @@ class StukWindowDelegate : public CefWindowDelegate {
 };
 
 void CreateStukBrowserWindow(CefRefPtr<CefCommandLine> command_line) {
+  if (command_line->HasSwitch("stuk-osr")) {
+    CreateStukOsrBrowser(command_line);
+    return;
+  }
+
   const std::string url_value = command_line->GetSwitchValue("url");
   const std::string url =
       url_value.empty() ? "about:blank" : std::string(url_value);
@@ -281,5 +287,8 @@ bool StukApp::OnAlreadyRunningAppRelaunch(
 }
 
 CefRefPtr<CefClient> StukApp::GetDefaultClient() {
+  if (StukOsrHandler* handler = StukOsrHandler::GetInstance()) {
+    return handler;
+  }
   return StukHandler::GetInstance();
 }

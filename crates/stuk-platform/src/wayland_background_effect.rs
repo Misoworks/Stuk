@@ -19,7 +19,7 @@ mod wayland_background_effect_protocol;
 use wayland_background_effect_protocol::*;
 
 #[cfg(target_os = "linux")]
-pub(crate) fn request(window: &Arc<dyn Window>, options: &WindowOptions) -> Option<WaylandEffect> {
+pub fn request(window: &Arc<dyn Window>, options: &WindowOptions) -> Option<WaylandEffect> {
     let wants_blur =
         options.transparent && options.background_effect != WindowBackgroundEffect::None;
     if !wants_blur && options.regions.is_empty() {
@@ -49,16 +49,13 @@ pub(crate) fn request(window: &Arc<dyn Window>, options: &WindowOptions) -> Opti
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(crate) fn request(
-    _window: &Arc<dyn Window>,
-    _options: &WindowOptions,
-) -> Option<WaylandEffect> {
+pub fn request(_window: &Arc<dyn Window>, _options: &WindowOptions) -> Option<WaylandEffect> {
     None
 }
 
 #[derive(Debug)]
 #[cfg(target_os = "linux")]
-pub(crate) struct WaylandEffect {
+pub struct WaylandEffect {
     display: *mut WlDisplay,
     surface: *mut WlProxy,
     effect: *mut WlProxy,
@@ -69,7 +66,7 @@ pub(crate) struct WaylandEffect {
 
 #[cfg(not(target_os = "linux"))]
 #[derive(Debug)]
-pub(crate) struct WaylandEffect;
+pub struct WaylandEffect;
 
 #[cfg(target_os = "linux")]
 impl Drop for WaylandEffect {
@@ -93,7 +90,7 @@ impl Drop for WaylandEffect {
 
 #[cfg(target_os = "linux")]
 impl WaylandEffect {
-    pub(crate) fn update(&self, options: &WindowOptions, width: i32, height: i32) -> bool {
+    pub fn update(&self, options: &WindowOptions, width: i32, height: i32) -> bool {
         if self.display.is_null() || self.surface.is_null() || self.compositor.is_null() {
             return false;
         }

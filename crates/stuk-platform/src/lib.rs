@@ -38,9 +38,17 @@ pub use integration::{
 };
 pub use material::{MaterialEffect, MaterialResolution, MaterialResolver};
 pub use session::{SplitHint, StaccatoSession};
+pub use wayland_background_effect::WaylandEffect as WindowEffect;
 
 pub type NativeActionHandler = Arc<dyn Fn(&str)>;
 pub type NativeScrollHandler = Arc<dyn Fn(f32, f32, f32, f32)>; // x, y, delta_x, delta_y
+
+pub fn request_window_effect(
+    window: &Arc<dyn Window>,
+    options: &WindowOptions,
+) -> Option<WindowEffect> {
+    wayland_background_effect::request(window, options)
+}
 
 const ACTION_WINDOW_CLOSE: &str = "window.close";
 const ACTION_WINDOW_MINIMIZE: &str = "window.minimize";

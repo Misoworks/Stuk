@@ -31,6 +31,8 @@ pub enum RendererError {
     Text(String),
     #[error("surface validation failed")]
     SurfaceValidation,
+    #[error("texture update failed: {0}")]
+    Texture(String),
 }
 
 pub struct GpuRenderer {
@@ -62,6 +64,8 @@ struct CachedTexture {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
+    width: u32,
+    height: u32,
 }
 
 impl GpuRenderer {
@@ -233,6 +237,62 @@ impl GpuRenderer {
             self.surface_config.width as f32 / self.scale_factor,
             self.surface_config.height as f32 / self.scale_factor,
         )
+    }
+
+    pub fn set_dynamic_bgra_image(
+        &mut self,
+        id: impl Into<String>,
+        width: u32,
+        height: u32,
+        bytes: &[u8],
+    ) -> Result<(), RendererError> {
+        let id = id.into();
+        if width == 0 || height == 0 {
+            return Err(RendererError::Texture(
+                "dynamic image has empty size".to_string(),
+            ));
+        }
+        let expected_len = width as usize * height as usize * 4;
+        if bytes.len() != expected_len {
+            return Err(RendererError::Texture(format!(
+                "dynamic image expected {expected_len} bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        let recreate = self
+            .texture_cache
+            .get(&id)
+            .is_none_or(|entry| entry.width != width || entry.height != height);
+        if recreate {
+            self.create_dynamic_bgra_image(id.clone(), width, height);
+        }
+
+        let Some(entry) = self.texture_cache.get(&id) else {
+            return Err(RendererError::Texture(
+                "dynamic image was not cached".to_string(),
+            ));
+        };
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &entry.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        Ok(())
     }
 
     pub fn render(&mut self, display_list: &DisplayList) -> Result<(), RendererError> {
@@ -465,9 +525,53 @@ impl GpuRenderer {
                 texture,
                 view,
                 bind_group: bind_group.clone(),
+                width: dimensions.0,
+                height: dimensions.1,
             },
         );
         Ok(bind_group)
+    }
+
+    fn create_dynamic_bgra_image(&mut self, id: String, width: u32, height: u32) {
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&id),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&id),
+            layout: &self.image_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Sampler(&self.image_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+            ],
+        });
+        self.texture_cache.insert(
+            id,
+            CachedTexture {
+                texture,
+                view,
+                bind_group,
+                width,
+                height,
+            },
+        );
     }
 
     fn rect_vertices(&self, display_list: &DisplayList) -> Vec<RectVertex> {

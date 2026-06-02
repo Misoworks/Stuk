@@ -31,6 +31,10 @@ use x11rb::{
     rust_connection::RustConnection,
 };
 
+mod osr;
+mod osr_host;
+mod osr_protocol;
+
 pub use stuk_platform::{WindowBackgroundEffect, WindowChrome, WindowRegion, WindowRegions};
 pub use stuk_style::Material;
 pub use stuk_web_runtime::{
@@ -49,6 +53,8 @@ const HOST_APP_H: &str = include_str!("../host/linux/app.h");
 const HOST_APP_CC: &str = include_str!("../host/linux/app.cc");
 const HOST_HANDLER_H: &str = include_str!("../host/linux/handler.h");
 const HOST_HANDLER_CC: &str = include_str!("../host/linux/handler.cc");
+const HOST_OSR_HANDLER_H: &str = include_str!("../host/linux/osr_handler.h");
+const HOST_OSR_HANDLER_CC: &str = include_str!("../host/linux/osr_handler.cc");
 const WEBVIEW_TITLEBAR_HEIGHT: u32 = 48;
 static WEBVIEW_INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -441,6 +447,9 @@ pub fn run_installing_window_from_args(args: &[String]) -> bool {
 }
 
 pub fn run_native_host_from_args(args: &[String]) -> bool {
+    if osr::run_from_args(args) {
+        return true;
+    }
     let Some(index) = args.iter().position(|arg| arg == NATIVE_HOST_ARG) else {
         return false;
     };
@@ -759,6 +768,9 @@ fn launch_native_host_process(
         let host_binary = ensure_stuk_cef_host(runtime_dir)
             .map_err(|message| WebViewError::CreationFailed { message })?;
         if !use_x11_embedded_compat() {
+            if !use_wayland_windowed_compat() {
+                return osr::launch_process(runtime_dir, config, bridge_handlers, url).map(Some);
+            }
             return launch_wayland_cef_host_process(
                 runtime_dir,
                 &host_binary,
@@ -770,7 +782,7 @@ fn launch_native_host_process(
         }
 
         let host_config_path =
-            std::env::temp_dir().join(format!("stuk-webview-host-{}.json", std::process::id()));
+            std::env::temp_dir().join(format!("stuk-webview-host-{}.json", webview_instance_key()));
         let body = serde_json::json!({
             "runtime_dir": runtime_dir,
             "host_binary": host_binary,
@@ -835,6 +847,16 @@ fn use_x11_embedded_compat() -> bool {
             std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_some()
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn use_wayland_windowed_compat() -> bool {
+    std::env::var("STUK_WEBVIEW_BACKEND").is_ok_and(|value| {
+        matches!(
+            value.as_str(),
+            "windowed" | "cef-windowed" | "wayland-windowed"
+        )
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -982,6 +1004,8 @@ fn write_host_source(source_dir: &Path) -> std::result::Result<(), String> {
         ("app.cc", HOST_APP_CC),
         ("handler.h", HOST_HANDLER_H),
         ("handler.cc", HOST_HANDLER_CC),
+        ("osr_handler.h", HOST_OSR_HANDLER_H),
+        ("osr_handler.cc", HOST_OSR_HANDLER_CC),
     ] {
         std::fs::write(source_dir.join(name), body).map_err(|error| error.to_string())?;
     }
@@ -998,6 +1022,8 @@ fn host_source_fingerprint() -> String {
         HOST_APP_CC,
         HOST_HANDLER_H,
         HOST_HANDLER_CC,
+        HOST_OSR_HANDLER_H,
+        HOST_OSR_HANDLER_CC,
     ] {
         for byte in body.as_bytes() {
             hash ^= u64::from(*byte);

@@ -2673,27 +2673,20 @@ Embedded child backend:
   On Linux this backend is X11 compatibility only. It must never be the default on Wayland.
 
 Off-screen backend:
-  CEF browser is created with CefWindowInfo::SetAsWindowless(parent).
+  CEF browser is created with CefWindowInfo::SetAsWindowless(kNullWindowHandle).
   CEF paints into buffers/textures that Stuk composites with native widgets and materials.
 ```
 
-Off-screen rendering is the target backend for transparent web composition and best hybrid UI because
-Stuk can draw native chrome, sidebars, overlays, command palettes, and material effects in one renderer.
-Embedded child windows are acceptable only as a compatibility backend when the platform can still keep
-Stuk-owned chrome and functional resize/focus behavior.
+Off-screen rendering is the default Linux/Wayland backend. Stuk creates the only visible top-level
+window, enables CEF windowless rendering in a helper process, receives BGRA paint buffers from
+`CefRenderHandler::OnPaint`, uploads them as dynamic renderer textures, and composites them behind
+Stuk-owned chrome, controls, overlays, and material effects. The helper CEF process must never show
+its own browser chrome, titlebar, or default page.
 
-Wayland-first bootstrap:
-  Until the off-screen backend is complete, Linux/Wayland may launch the Stuk CEF host directly on
-  Ozone/Wayland with native Wayland windowing. This is preferable to forcing X11/Xwayland because it
-  preserves the session backend and avoids X11-only chrome behavior. It is still an interim backend;
-  the final Wayland path is off-screen CEF composited by Stuk.
-
-  When this bootstrap backend is used with `WindowChrome::Stuk`, the CEF host must create a
-  frameless CEF Views window, not a decorated Chromium sample/client window. Web content may provide
-  Stuk chrome using CSS `-webkit-app-region: drag` / `no-drag`; the host must forward CEF draggable
-  regions to the native window and expose minimal window commands such as close, minimize, maximize,
-  restore, and toggle-maximize. Native title bars from `cefclient`, Chrome runtime, GTK, or Wayland
-  client-side decoration helpers must not be visible in this mode.
+Embedded child windows are compatibility-only. On Linux they are X11 compatibility backends and must
+never be the default on Wayland. A Wayland CEF toplevel fallback may exist behind an explicit
+developer override for debugging, but production Wayland webviews should use Stuk-owned off-screen
+composition.
 
 For Linux/Wayland, transparent webview composition means a single Stuk-owned top-level Wayland
 surface with transparent regions that the compositor can blur behind. The browser body may be
@@ -2914,9 +2907,12 @@ Current implementation checkpoint:
   generated capability JSON.
 - Runtime bridge dispatch enforces descriptor permissions, target availability, and origin policy
   before calling Rust handlers.
+- Linux/Wayland webviews use a Stuk-owned off-screen CEF backend by default. Stuk owns the native
+  window, titlebar, resize/drag behavior, background effect regions, transparent composition, and CEF
+  frame presentation.
 - Remaining production hardening: typed TypeScript binding generation, manifest-to-runtime command
-  permission wiring, devtools tracing, event streaming, and the off-screen CEF compositor path for
-  fully Stuk-owned transparent Wayland hybrid webviews.
+  permission wiring, devtools tracing, event streaming, IME hardening, GPU shared-texture handoff,
+  and broader platform OSR backends.
 
 Bridge commands are the only default way for web UI to touch native Rust capabilities. Web code must
 not get raw filesystem, process, credential, shell, or arbitrary OS access. A command may declare

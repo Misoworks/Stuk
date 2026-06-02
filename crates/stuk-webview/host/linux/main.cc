@@ -42,6 +42,9 @@ int main(int argc, char* argv[]) {
 
   CefSettings settings;
   settings.no_sandbox = true;
+  if (command_line->HasSwitch("stuk-osr")) {
+    settings.windowless_rendering_enabled = true;
+  }
 
   const std::string root_cache_path =
       command_line->GetSwitchValue("root-cache-path");

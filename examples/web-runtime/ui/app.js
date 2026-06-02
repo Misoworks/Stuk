@@ -31,7 +31,6 @@ const body = document.querySelector("#note-body");
 const newButton = document.querySelector("#new-note");
 const saveButton = document.querySelector("#save-note");
 const deleteButton = document.querySelector("#delete-note");
-const windowControls = document.querySelectorAll("[data-window-action]");
 
 function loadNotes() {
   try {
@@ -164,15 +163,6 @@ deleteButton.addEventListener("click", () => {
   }
   persist();
   render();
-});
-
-windowControls.forEach((control) => {
-  control.addEventListener("click", () => {
-    const action = control.dataset.windowAction;
-    if (action) {
-      window.location.href = `stuk://window/${action}`;
-    }
-  });
 });
 
 document.addEventListener("keydown", (event) => {

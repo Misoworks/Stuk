@@ -2352,6 +2352,7 @@ dependencies = [
  "serde_json",
  "stuk",
  "stuk-platform",
+ "stuk-render",
  "stuk-style",
  "stuk-web-runtime",
  "thiserror 2.0.18",

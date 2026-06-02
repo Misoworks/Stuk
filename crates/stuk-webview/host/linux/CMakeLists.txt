@@ -22,6 +22,8 @@ add_executable(stuk-cef-host
   app.h
   handler.cc
   handler.h
+  osr_handler.cc
+  osr_handler.h
 )
 
 SET_EXECUTABLE_TARGET_PROPERTIES(stuk-cef-host)

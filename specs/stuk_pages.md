@@ -211,8 +211,8 @@ Rules:
   to Stuk, not the app.
 - Shared CEF runtime files are reusable across apps; browser profile/cache paths are isolated and
   managed by Stuk so concurrent windows do not fight over CEF process-singleton state.
-- WebView apps using Stuk chrome should only provide the visible content structure for titlebars and
-  controls; drag-region forwarding and native window commands are framework behavior.
+- WebView apps using Stuk chrome should not provide their own titlebars or window controls. Stuk owns
+  native chrome, drag behavior, resize behavior, and close/minimize/maximize actions.
 - WebView apps should declare glass/blur/input/opaque regions through Stuk window/webview
   constructors. App code should not bind Wayland protocols or hand-roll native rounded input masks.
 - WebView bridge commands should use descriptors for permissions, targets, origins, and schemas.
