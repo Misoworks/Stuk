@@ -316,6 +316,7 @@ impl ScrollViewElement {
 pub struct SidebarElement {
     pub children: Vec<Element>,
     pub width: f32,
+    pub opacity: f32,
 }
 
 impl Default for SidebarElement {
@@ -323,6 +324,7 @@ impl Default for SidebarElement {
         Self {
             children: Vec::new(),
             width: 220.0,
+            opacity: 0.72,
         }
     }
 }

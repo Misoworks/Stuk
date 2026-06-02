@@ -78,7 +78,15 @@ stuk inspect
 stuk preview
 stuk doctor
 stuk bundle
+stuk install .
+stuk update --all
 ```
+
+`stuk install` registers a source checkout as a user-local app for development. It writes a launcher
+and registry record under `~/.local/share/stuk/apps/<app-id>/` and, on Linux desktops, a `.desktop`
+file under `~/.local/share/applications/`. `stuk install --autostart` also writes a user autostart
+entry under `~/.config/autostart/`. `stuk update` refreshes the launcher and runs `git pull
+--ff-only` when the registered source is a git checkout.
 
 ---
 
@@ -385,7 +393,7 @@ stuk/
 │   ├── stuk-devtools/
 │   └── stuk-cli/
 ├── examples/
-│   └── web-runtime/
+│   └── notes/
 ├── templates/
 │   ├── app-basic/
 │   ├── app-sidebar/
@@ -812,11 +820,15 @@ HStack::new()
 
 ```rust
 SplitView::horizontal()
-    .sidebar(Sidebar::new())
+    .sidebar(Sidebar::new().width(260.0).opacity(0.42))
     .main(Editor::new())
     .resizable(true)
     .initial_ratio(0.28)
 ```
+
+`Sidebar::opacity(...)` controls the fallback material alpha for translucent sidebars. It should be
+available as a first-class primitive so apps can tune glass/sidebar contrast without hand-rendering
+background rectangles.
 
 Layout inspector must show:
 
@@ -1595,12 +1607,23 @@ pub trait Platform {
     fn set_title(&mut self, window: WindowId, title: &str);
     fn set_material(&mut self, window: WindowId, material: Material);
     fn set_chrome(&mut self, window: WindowId, chrome: WindowChrome);
+    fn set_window_visible(&mut self, window: WindowId, visible: bool) -> bool;
+    fn present_window(&mut self, window: WindowId) -> bool;
+    fn set_window_always_on_top(&mut self, window: WindowId, always_on_top: bool) -> bool;
     fn register_actions(&mut self, actions: &[ActionDescriptor]);
     fn read_clipboard(&self) -> Option<ClipboardData>;
     fn write_clipboard(&self, data: ClipboardData);
     fn open_file_dialog(&self, options: FileDialogOptions) -> FileDialogResult;
     fn platform_capabilities(&self) -> PlatformCapabilities;
     fn backend(&self) -> BackendDescriptor;
+    fn set_tray_icon(&mut self, icon: TrayIcon) -> bool;
+    fn remove_tray_icon(&mut self, id: &str) -> bool;
+    fn set_autostart(&mut self, entry: AutostartEntry) -> bool;
+    fn register_global_shortcut(&mut self, registration: GlobalShortcutRegistration) -> bool;
+    fn unregister_global_shortcut(&mut self, id: &str) -> bool;
+    fn register_deep_links(&mut self, registration: DeepLinkRegistration) -> bool;
+    fn register_native_messaging_host(&mut self, host: NativeMessagingHost) -> bool;
+    fn set_single_instance_policy(&mut self, policy: SingleInstancePolicy) -> bool;
 }
 ```
 
@@ -1636,6 +1659,14 @@ pub struct PlatformCapabilities {
     pub command_palette: bool,
     pub workspace_sessions: bool,
     pub native_notifications: bool,
+    pub tray_icons: bool,
+    pub autostart: bool,
+    pub global_shortcuts: bool,
+    pub deep_links: bool,
+    pub single_instance: bool,
+    pub native_messaging: bool,
+    pub secure_storage: bool,
+    pub credential_storage: bool,
     pub system_dark_mode: bool,
     pub high_contrast: bool,
 }
@@ -2535,7 +2566,7 @@ The structure agents need.
 
 ---
 
-## Addendum: Stuk WebView, CEF Runtime, and Hybrid UI
+## Addendum: Fenestra, Stuk Integration, CEF Runtime, and Hybrid UI
 
 ### Purpose
 
@@ -2547,14 +2578,16 @@ Stuk is an app runtime first. It should support both:
 Stuk Native
   GPU-rendered native widgets for fully native apps and shell-grade UI.
 
-Stuk WebView
+Stuk + Fenestra
   CEF-backed embedded web UI for high-velocity apps that still want a Rust backend,
-  permissions, actions, settings schema, and shared runtime management.
+  Stuk permissions/actions/settings integration, and Fenestra runtime management.
 ```
 
 This is not a contradiction. It is a practical split.
 
-Some apps should be fully native. Some apps benefit from web UI velocity. Stuk should allow both without forcing developers into Tauri/WebKitGTK, Electron sidecars, or each app bundling its own browser runtime.
+Some apps should be fully native. Some apps benefit from web UI velocity. Stuk should allow both
+through an adapter without forcing the native framework itself to own CEF, WebKitGTK, Electron
+sidecars, or each app bundling its own browser runtime.
 
 The real enemy is not web UI. The real enemy is:
 
@@ -2568,11 +2601,12 @@ fake blur/material hacks
 inconsistent app structure
 ```
 
-Stuk WebView should provide the practical speed of web UI while keeping Stuk's Rust runtime and OS integration model.
+Fenestra should provide the practical speed of web UI while `stuk-fenestra` maps it into Stuk's Rust
+runtime and OS integration model.
 
 ### Architecture
 
-Stuk should be structured as:
+Stuk and Fenestra should be structured as separate repos:
 
 ```txt
 Stuk Runtime
@@ -2586,25 +2620,46 @@ Stuk Runtime
 ├── resources/assets
 ├── packaging metadata
 ├── platform integration
-├── Stuk Native renderer
-└── Stuk WebView renderer
-    ├── CEF host
-    ├── JavaScript bridge
-    ├── Rust command bridge
-    ├── asset loader
-    ├── dev server bridge
-    ├── security policy
-    └── runtime resolver
+└── Stuk Native renderer
+
+Fenestra
+├── fenestra-runtime
+│   ├── runtime detection
+│   ├── downloads/install
+│   ├── validation
+│   ├── version selection
+│   ├── runtime manifests
+│   ├── user-local runtime directories
+│   ├── system discovery
+│   ├── bundled fallback
+│   ├── runtime locks
+│   └── pruning/diagnostics
+├── fenestra-cef
+│   ├── CEF host
+│   ├── JavaScript bridge transport
+│   ├── Rust command bridge transport
+│   ├── webview host
+│   ├── security policy
+│   └── dev server bridge
+└── stuk-fenestra
+    ├── WebViewWindow
+    ├── hybrid WebView widget
+    ├── Stuk action bridge
+    ├── Stuk permission bridge
+    ├── Stuk settings bridge
+    ├── Stuk manifest integration
+    └── Staccato material/window integration
 ```
 
-Required crates to add to the workspace:
+Fenestra crates:
 
 ```txt
-stuk-webview
-stuk-web-runtime
+fenestra-runtime
+fenestra-cef
+stuk-fenestra
 ```
 
-`stuk-webview` owns:
+`fenestra-cef` owns:
 
 - CEF-backed embedded webview windows.
 - JavaScript bridge support.
@@ -2613,11 +2668,10 @@ stuk-web-runtime
 - dev server integration.
 - webview security policy.
 - hybrid native/web surfaces.
-- Stuk-owned webview host windows.
 - transparent webview composition when the selected backend supports it.
 - embedded CEF child-window and off-screen rendering backends.
 
-`stuk-web-runtime` owns:
+`fenestra-runtime` owns:
 
 - shared CEF runtime detection.
 - system runtime discovery.
@@ -2637,7 +2691,7 @@ Native:
   Stuk renders the full interface using its native renderer and widgets.
 
 WebView:
-  Stuk hosts a CEF webview and exposes typed Rust commands to the frontend.
+  `stuk-fenestra` hosts a Fenestra CEF webview and exposes typed Rust commands to the frontend.
 
 Hybrid:
   Stuk combines native and web UI in one window.
@@ -2645,10 +2699,10 @@ Hybrid:
 
 ### WebView Host Model
 
-Stuk must own the application window for webview apps.
+Stuk must own the application window for Stuk-integrated webview apps.
 
 The CEF sample applications (`cefsimple`, `cefclient`) are acceptable only as a temporary bootstrap
-fallback while the Stuk CEF host is being built. They must not be considered production chrome
+fallback while the Fenestra CEF host is being built. They must not be considered production chrome
 because they create their own top-level windows, title bars, theme handling, cache settings, and
 window behavior.
 
@@ -2662,12 +2716,12 @@ CEF Browser
   embedded as window content or rendered off-screen into Stuk's renderer
 ```
 
-Stuk should support two CEF host strategies:
+Fenestra and `stuk-fenestra` should support two CEF host strategies:
 
 ```txt
 Embedded child backend:
   CEF browser is created with CefWindowInfo::SetAsChild(parent, rect).
-  Stuk keeps the outer native window and places the browser in the content rect.
+  `stuk-fenestra` keeps the outer native window and places the browser in the content rect.
   This backend must use a Stuk-owned native window, reserve Stuk chrome/control regions before
   embedding the browser, and must not expose CEF sample chrome.
   On Linux this backend is X11 compatibility only. It must never be the default on Wayland.
@@ -2678,7 +2732,7 @@ Off-screen backend:
 ```
 
 Off-screen rendering is the default Linux/Wayland backend. Stuk creates the only visible top-level
-window, enables CEF windowless rendering in a helper process, receives BGRA paint buffers from
+window through `stuk-fenestra`, enables CEF windowless rendering in a Fenestra helper process, receives BGRA paint buffers from
 `CefRenderHandler::OnPaint`, uploads them as dynamic renderer textures, and composites them behind
 Stuk-owned chrome, controls, overlays, and material effects. The helper CEF process must never show
 its own browser chrome, titlebar, or default page.
@@ -2693,14 +2747,14 @@ surface with transparent regions that the compositor can blur behind. The browse
 transparent, but Stuk still has to composite the browser output into that same surface. If the
 browser is a separate native child/top-level surface, compositor blur and Stuk chrome cannot be
 made reliable across compositors. Therefore Wayland transparency requires the off-screen CEF
-backend or a custom Stuk CEF runtime that exposes an equivalent buffer/texture handoff.
+backend or a custom Fenestra CEF runtime that exposes an equivalent buffer/texture handoff.
 
-CEF windows used by Stuk must:
+CEF windows used by Fenestra/Stuk integration must:
 
-- set a Stuk-specific root cache path, never the CEF sample default.
+- set a Fenestra-specific root cache path, never the CEF sample default.
 - keep browser state in a user cache profile, not inside the shared runtime install.
 - default to an isolated CEF root/cache per launched webview window so one app/window crash cannot
-  take down other Stuk webview windows.
+  take down other Fenestra webview windows.
 - handle CEF same-profile relaunches by creating or activating a Stuk window in the existing host
   process, never by showing default Chromium chrome.
 - load the app URL explicitly, never fall back to Chrome/Google defaults.
@@ -2715,7 +2769,7 @@ CEF windows used by Stuk must:
 WebView transparency maps to the same material pipeline as native Stuk windows:
 
 ```rust
-WebViewWindow::new()
+stuk_fenestra::WebViewWindow::new()
     .entry("ui/dist/index.html")
     .glass()
     .blur_region(WindowRegion::adaptive_rounded_left(248, 16))
@@ -2755,7 +2809,7 @@ WebView window example:
 App::new()
     .id("net.aveid.klarkey")
     .window(
-        WebViewWindow::new()
+        stuk_fenestra::WebViewWindow::new()
             .title("Klarkey")
             .entry("ui/dist/index.html")
             .dev_server("http://localhost:5173")
@@ -2860,7 +2914,7 @@ App::new()
     .id("net.aveid.klarkey")
     .command(unlock_vault)
     .window(
-        WebViewWindow::new()
+        stuk_fenestra::WebViewWindow::new()
             .entry("ui/dist/index.html")
             .dev_server("http://localhost:5173")
             .material(Material::Maris)
@@ -2871,7 +2925,7 @@ App::new()
 JavaScript side:
 
 ```ts
-import { invoke, actions, settings, window } from "@stuk/web";
+import { invoke, actions, settings, window } from "@fenestra/stuk";
 
 await invoke("unlock_vault", { id: "main" });
 
@@ -2893,23 +2947,24 @@ The bridge must be:
 - safe by default
 - target-aware
 - generated into TypeScript bindings where possible
-- available to desktop webviews through Stuk IPC
+- available to desktop webviews through Fenestra IPC and the Stuk adapter
 - replaceable by web adapters when the same UI is compiled for the browser
 
 Current implementation checkpoint:
 
 - `BridgeRegistry` declares allowlisted commands and can generate a minimal JavaScript facade.
-- The Linux CEF host receives declared command names, installs `window.stuk.bridge`, cancels
-  `stuk://bridge/...` navigation, and forwards bridge calls to Rust over a per-host IPC channel.
+- The Linux CEF host receives declared command names, installs `window.fenestra.bridge`, cancels
+  `fenestra://bridge/...` navigation, and forwards bridge calls to Rust over a per-host IPC channel.
+- `stuk-fenestra` also exposes `window.stuk.bridge` for Stuk-integrated apps.
 - `WebViewWindow::bridge_handler`, `bridge_handler_async`, and descriptor-aware variants let apps
   register Rust command handlers without writing runtime install, process, or CEF IPC code.
 - Bridge descriptors support permissions, allowed origins, target metadata, params schema, and
   generated capability JSON.
 - Runtime bridge dispatch enforces descriptor permissions, target availability, and origin policy
   before calling Rust handlers.
-- Linux/Wayland webviews use a Stuk-owned off-screen CEF backend by default. Stuk owns the native
-  window, titlebar, resize/drag behavior, background effect regions, transparent composition, and CEF
-  frame presentation.
+- Linux/Wayland Stuk-integrated webviews use a Stuk-owned off-screen CEF backend by default. Stuk
+  owns the native window, titlebar, resize/drag behavior, background effect regions, and transparent
+  composition while Fenestra owns CEF frame presentation.
 - Remaining production hardening: typed TypeScript binding generation, manifest-to-runtime command
   permission wiring, devtools tracing, event streaming, IME hardening, GPU shared-texture handoff,
   and broader platform OSR backends.
@@ -2933,7 +2988,7 @@ if (capabilities.commands.includes("reveal_file")) {
 }
 ```
 
-For browser builds of a webview app, `@stuk/web` resolves to a browser adapter. It can call HTTP,
+For browser builds of a webview app, Fenestra/Stuk generated bindings resolve to a browser adapter. They can call HTTP,
 WASM, local browser storage, or no-op/unsupported implementations, but it must not pretend native
 desktop capabilities exist.
 
@@ -2977,11 +3032,11 @@ Rules:
 
 ### Shared CEF Runtime
 
-Stuk must support a shared CEF runtime so every app does not bundle its own browser engine.
+Fenestra must support a shared CEF runtime so every app does not bundle its own browser engine.
 
 The shared runtime is the browser engine installation only. Browser profiles, cache, localStorage,
 cookies, and process-singleton roots are app/window state and must live in user cache directories
-such as `~/.cache/stuk/webviews/<app-key>/instances/<instance-key>/`. Multiple apps and windows must
+such as `~/.cache/fenestra/webviews/<app-key>/instances/<instance-key>/`. Multiple apps and windows must
 be able to run against the same installed runtime at the same time without sharing a CEF
 `root_cache_path` by default. Persistent/shared profiles should be explicit opt-in app policy.
 
@@ -2999,11 +3054,11 @@ Runtime locations:
 
 ```txt
 System:
-  /usr/lib/stuk/cef/<version>/
-  /opt/stuk/cef/<version>/ if distro chooses
+  /usr/lib/fenestra/cef/<version>/
+  /opt/fenestra/cef/<version>/ if distro chooses
 
 User-local:
-  ~/.local/share/stuk/runtimes/cef/<version>/
+  ~/.local/share/fenestra/runtimes/cef/<version>/
 
 Bundled:
   <app>/runtimes/cef/<version>/
@@ -3013,25 +3068,25 @@ CEF package policy:
 
 ```txt
 standard:
-  default for Stuk's embedded host because it includes headers, CMake files, libcef_dll, resources,
-  and libcef needed to build `stuk-cef-host`.
+  default for Fenestra's embedded host because it includes headers, CMake files, libcef_dll,
+  resources, and libcef needed to build the Fenestra CEF host.
 
 client:
   acceptable only for temporary external-process fallbacks or diagnostics.
 
 minimal:
-  not acceptable for the embedded host unless Stuk already has a prebuilt compatible host binary.
+  not acceptable for the embedded host unless Fenestra already has a prebuilt compatible host binary.
 ```
 
 On Glacier/Staccato, the OS should provide:
 
 ```txt
-stuk-web-runtime-cef
+fenestra-runtime-cef
 ```
 
 or equivalent, installed and updated through the OS update mechanism.
 
-On normal Linux distributions, Stuk should support:
+On normal Linux distributions, Fenestra should support:
 
 - distro package if available
 - user-local runtime install without root
@@ -3039,7 +3094,7 @@ On normal Linux distributions, Stuk should support:
 
 ### Runtime Manager
 
-`stuk-web-runtime` must provide:
+`fenestra-runtime` must provide:
 
 ```txt
 runtime detection
@@ -3054,18 +3109,26 @@ runtime diagnostics
 CLI commands:
 
 ```sh
-stuk runtime list
-stuk runtime install cef
-stuk runtime remove cef <version>
-stuk runtime doctor
+fenestra runtime list
+fenestra runtime install cef
+fenestra runtime remove cef <version>
+fenestra runtime doctor
+fenestra install .
+fenestra update --all
 ```
+
+`fenestra install` registers a standalone Fenestra source checkout under
+`~/.local/share/fenestra/apps/<app-id>/` and writes a Linux `.desktop` file when the desktop
+environment supports it. `fenestra install --autostart` also writes a user autostart entry under
+`~/.config/autostart/`. `fenestra update` refreshes registered launchers and updates git-backed
+source checkouts with `git pull --ff-only`.
 
 Example output:
 
 ```txt
 CEF runtimes:
-  126.0.6478.114 system /usr/lib/stuk/cef/126
-  125.0.6422.60 user ~/.local/share/stuk/runtimes/cef/125
+  126.0.6478.114 system /usr/lib/fenestra/cef/126
+  125.0.6422.60 user ~/.local/share/fenestra/runtimes/cef/125
 ```
 
 Runtime config:
@@ -3091,14 +3154,14 @@ bundled
 disabled
 ```
 
-Stuk must not silently install systemwide CEF. System installs must go through the OS/package manager or an explicit privileged installer flow.
+Fenestra must not silently install systemwide CEF. System installs must go through the OS/package manager or an explicit privileged installer flow.
 
-User-local runtime installs are allowed with explicit user consent and verified downloads. The default install target is `~/.local/share/stuk/runtimes/cef/<version>-<package>/`; first launch may show an "Installing required dependencies" step for webview apps that allow user-local runtime installation. Apps that need zero first-launch downloads can opt into bundling the renderer, accepting the larger bundle.
+User-local runtime installs are allowed with explicit user consent and verified downloads. The default install target is `~/.local/share/fenestra/runtimes/cef/<version>-<package>/`; first launch may show an "Installing required dependencies" step for webview apps that allow user-local runtime installation. Apps that need zero first-launch downloads can opt into bundling the renderer, accepting the larger bundle.
 
 Runtime indexes must be configurable. The default index may point at the upstream CEF build index,
-but Stuk can point at a project-owned index, for example an R2 bucket containing Stuk-patched CEF
+but Fenestra can point at a project-owned index, for example an R2 bucket containing Fenestra-patched CEF
 standard archives. Index entries may use relative archive names resolved beside the index URL or
-absolute archive URLs. This lets Stuk version-track custom CEF builds without requiring app code to
+absolute archive URLs. This lets Fenestra version-track custom CEF builds without requiring app code to
 know whether the runtime came from upstream CEF, an OS package, a bundled runtime, or a Stuk-hosted
 runtime.
 
@@ -3192,13 +3255,14 @@ bundled CEF runtime
 Add:
 
 ```sh
-stuk runtime list
-stuk runtime install cef
-stuk runtime remove cef <version>
-stuk runtime doctor
+fenestra runtime list
+fenestra runtime install cef
+fenestra runtime remove cef <version>
+fenestra runtime doctor
 ```
 
-`stuk doctor` should include CEF runtime status when the app uses webview mode.
+`fenestra runtime doctor` should include CEF runtime status. `stuk doctor` may surface adapter
+configuration status when the app uses `stuk-fenestra`, but runtime ownership stays in Fenestra.
 
 `stuk validate` should validate:
 
@@ -3210,16 +3274,17 @@ stuk runtime doctor
 - remote origin rules
 - runtime fallback policy
 
-### Implementation Milestone: Stuk WebView + Shared CEF Runtime
+### Implementation Milestone: Fenestra + Stuk Adapter
 
 Add a milestone after the native/runtime MVP:
 
 ```txt
-Milestone: Stuk WebView + Shared CEF Runtime
+Milestone: Fenestra + Stuk Adapter
 
 Build:
-- `stuk-webview`
-- `stuk-web-runtime`
+- `fenestra-runtime`
+- `fenestra-cef`
+- `stuk-fenestra`
 - CEF runtime detection
 - user-local runtime support
 - bundled runtime fallback
@@ -3228,8 +3293,8 @@ Build:
 - JavaScript bridge package
 - strict webview security defaults
 - Vite/dev-server bridge
-- `stuk runtime list`
-- `stuk runtime doctor`
+- `fenestra runtime list`
+- `fenestra runtime doctor`
 
 Done when:
 A Klarkey-style app can use a CEF webview UI with a Rust backend, shared runtime detection, hot frontend reload, typed command calls, strict security defaults, and Staccato-compatible manifest metadata.
@@ -3246,15 +3311,27 @@ Klarkey-class native requirements:
   declared app permissions rather than ad hoc side channels.
 ```
 
+Current Linux backend status:
+
+- autostart writes user-local desktop entries under `~/.config/autostart/`.
+- deep-link registration writes `x-scheme-handler/*` defaults to the user `mimeapps.list`.
+- native messaging writes Chrome/Chromium/Brave and Firefox user manifest files.
+- Wayland tray icons require a status-notifier/appindicator backend and are capability-gated off
+  until that live backend is present.
+- Wayland global shortcuts require an XDG desktop portal global-shortcuts session and are
+  capability-gated off until that live backend is present.
+- single-instance process routing is still a runtime coordinator concern and must not be reported
+  as supported by plain Linux backends until it has a lock/activation backend.
+
 ### Why This Exists
 
-Stuk WebView exists because:
+Fenestra exists because:
 
 - WebKitGTK is not acceptable as the only Linux webview backend.
 - Tauri becomes painful for apps needing reliable motion, blur, consistent runtime behavior, or non-awful Linux webview behavior.
 - Electron duplicates huge runtimes and encourages sidecar/backend weirdness.
 - Many real apps still benefit from web UI velocity.
-- Rust backend + CEF frontend + Stuk integration is a practical bridge.
+- Rust backend + CEF frontend + optional Stuk integration is a practical bridge.
 - A shared runtime gives smaller apps and centralized security updates.
 
 ### Schelf-Class Migration Target
@@ -3262,23 +3339,25 @@ Stuk WebView exists because:
 A Tauri app like Schelf should be able to move to Stuk without rewriting its web UI first:
 
 - keep the existing Vite/web UI as the CEF webview frontend.
-- replace `@tauri-apps/api/core.invoke` with `window.stuk.bridge.invoke` or generated
-  `@stuk/web` bindings.
+- replace `@tauri-apps/api/core.invoke` with `window.fenestra.bridge.invoke`,
+  `window.stuk.bridge.invoke` through `stuk-fenestra`, or generated bindings.
 - declare Linux package-management commands as bridge descriptors with explicit permissions such
   as `filesystem`, `package-manager`, `process`, `network`, and `clipboard`.
 - keep desktop-only package operations unavailable in browser/mobile targets unless a web adapter
   provides a real fallback.
-- use `WebViewWindow::glass()` plus adaptive Wayland regions for rounded window input masks and
+- use `stuk_fenestra::WebViewWindow::glass()` plus adaptive Wayland regions for rounded window input masks and
   sidebar-only blur.
-- let Stuk own runtime install, window chrome, drag regions, window controls, transparent CEF
+- let Fenestra own runtime install, CEF host, JavaScript bridge transport, transparent CEF
   backgrounds, and bridge security policy.
+- let Stuk own native lifecycle, permissions/actions/settings, native chrome, drag regions, window
+  controls, and platform material integration through `stuk-fenestra`.
 
-The migration is complete when Schelf can run on Linux Wayland through Stuk WebView with the same
+The migration is complete when Schelf can run on Linux Wayland through `stuk-fenestra` with the same
 native package-management backend semantics, no Tauri/WebKitGTK dependency, reusable shared CEF
 runtime resolution, and no app-local Wayland blur/input-region code.
 
 Stuk Native remains the long-term fully native path.
 
-Stuk WebView is the high-velocity practical path.
+Fenestra is the high-velocity practical web path.
 
 Both must coexist under one coherent runtime.

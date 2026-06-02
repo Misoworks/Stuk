@@ -436,7 +436,9 @@ fn render_sidebar(
         y: bounds.y,
         width: bounds.width,
         height: bounds.height,
-        color: Material::Sidebar.fallback_color_for(theme).opacity(0.72),
+        color: Material::Sidebar
+            .fallback_color_for(theme)
+            .opacity(sidebar.opacity.clamp(0.0, 1.0)),
     });
     let stack = crate::element::StackElement {
         axis: Axis::Vertical,

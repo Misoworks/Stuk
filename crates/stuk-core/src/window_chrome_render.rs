@@ -45,14 +45,24 @@ pub(crate) fn render_window_chrome(
         return;
     }
 
+    let titlebar_color = theme.colors.toolbar.opacity(0.58);
     list.push(RoundedRectCommand {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
-        height: CHROME_HEIGHT + radius,
+        height: CHROME_HEIGHT,
         radius,
-        color: theme.colors.toolbar.opacity(0.58),
+        color: titlebar_color,
     });
+    if radius > 0.0 {
+        list.push(RectCommand {
+            x: bounds.x,
+            y: bounds.y + (CHROME_HEIGHT - radius).max(0.0),
+            width: bounds.width,
+            height: radius.min(CHROME_HEIGHT),
+            color: titlebar_color,
+        });
+    }
     list.push(RectCommand {
         x: bounds.x,
         y: bounds.y + CHROME_HEIGHT - 1.0,

@@ -22,16 +22,13 @@ members = [
     "crates/stuk-settings",
     "crates/stuk-manifest",
     "crates/stuk-cli",
-    "crates/stuk-web-runtime",
-    "crates/stuk-webview",
     "examples/notes",
-    "examples/web-runtime",
     "tests/integration",
     "benches",
 ]
 default-members = [
     "crates/stuk-cli",
-    "examples/web-runtime",
+    "examples/notes",
 ]
 
 [workspace.package]
@@ -60,8 +57,6 @@ stuk-platform-web = { path = "crates/stuk-platform-web" }
 stuk-accessibility = { path = "crates/stuk-accessibility" }
 stuk-settings = { path = "crates/stuk-settings" }
 stuk-manifest = { path = "crates/stuk-manifest" }
-stuk-web-runtime = { path = "crates/stuk-web-runtime" }
-stuk-webview = { path = "crates/stuk-webview" }
 
 accesskit = "0.24.0"
 bytemuck = { version = "1.25.0", features = ["derive"] }

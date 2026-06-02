@@ -128,6 +128,28 @@ impl Window {
         self
     }
 
+    pub fn titlebar_sidebar_blur_region(
+        mut self,
+        sidebar_width: i32,
+        titlebar_height: i32,
+        radius: i32,
+    ) -> Self {
+        self.element.regions.blur = Some(WindowRegion::adaptive_titlebar_sidebar(
+            sidebar_width,
+            titlebar_height,
+            radius,
+        ));
+        self
+    }
+
+    pub fn content_opaque_region(mut self, sidebar_width: i32, titlebar_height: i32) -> Self {
+        self.element.regions.opaque = Some(WindowRegion::adaptive_content_after_sidebar(
+            sidebar_width,
+            titlebar_height,
+        ));
+        self
+    }
+
     pub fn size(mut self, width: u32, height: u32) -> Self {
         self.element.width = width;
         self.element.height = height;

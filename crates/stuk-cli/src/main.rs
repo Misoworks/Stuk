@@ -1,7 +1,7 @@
 mod build;
 mod doctor;
 mod project;
-mod runtime;
+mod source_install;
 mod templates;
 
 use std::{
@@ -13,7 +13,7 @@ use build::{BuildOptions, run_build};
 use clap::{Parser, Subcommand};
 use doctor::run_doctor;
 use project::{CreateProjectOptions, DevOptions, create_project, run_cargo_command, run_dev};
-use runtime::RuntimeCommand;
+use source_install::{InstallOptions, UpdateOptions};
 use stuk_devtools::{BundlePlan, BundleTarget, ManifestInspection, PreviewDescriptor};
 use stuk_manifest::{Diagnostic, DiagnosticLevel, parse_file, validate_with_base_dir};
 
@@ -80,28 +80,24 @@ enum Command {
         #[arg(default_value = "Stuk.toml")]
         manifest: PathBuf,
     },
-    Runtime {
-        #[command(subcommand)]
-        command: RuntimeSubcommand,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum RuntimeSubcommand {
-    List {
-        #[arg(long)]
-        json: bool,
-    },
     Install {
-        engine: String,
-    },
-    Remove {
-        engine: String,
-        version: Option<String>,
-    },
-    Doctor {
+        #[arg(default_value = ".")]
+        source: PathBuf,
         #[arg(long)]
-        json: bool,
+        id: Option<String>,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        command: Option<String>,
+        #[arg(long)]
+        autostart: bool,
+        #[arg(long)]
+        no_desktop: bool,
+    },
+    Update {
+        target: Option<String>,
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -141,14 +137,22 @@ fn run(command: Command) -> Result<ExitCode, String> {
             json,
             manifest,
         } => bundle_manifest(target, json, manifest),
-        Command::Runtime { command } => Ok(runtime::run_runtime(match command {
-            RuntimeSubcommand::List { json } => RuntimeCommand::List { json },
-            RuntimeSubcommand::Install { engine } => RuntimeCommand::Install { engine },
-            RuntimeSubcommand::Remove { engine, version } => {
-                RuntimeCommand::Remove { engine, version }
-            }
-            RuntimeSubcommand::Doctor { json } => RuntimeCommand::Doctor { json },
-        })),
+        Command::Install {
+            source,
+            id,
+            name,
+            command,
+            autostart,
+            no_desktop,
+        } => source_install::install(InstallOptions {
+            source,
+            id,
+            name,
+            command,
+            autostart,
+            desktop: !no_desktop,
+        }),
+        Command::Update { target, all } => source_install::update(UpdateOptions { target, all }),
     }
 }
 

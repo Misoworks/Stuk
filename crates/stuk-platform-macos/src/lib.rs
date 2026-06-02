@@ -1,9 +1,10 @@
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    BackendDescriptor, BackendKind, BackendStatus, ClipboardData, FileDialogOptions,
-    FileDialogResult, GenericPlatform, MaterialEffect, MaterialResolution, MaterialResolver,
-    Platform, PlatformCapabilities, PlatformError, PlatformOs, RuntimeTarget, WindowChrome,
-    WindowHandle, WindowId, WindowOptions,
+    AutostartEntry, BackendDescriptor, BackendKind, BackendStatus, ClipboardData,
+    DeepLinkRegistration, FileDialogOptions, FileDialogResult, GenericPlatform,
+    GlobalShortcutRegistration, MaterialEffect, MaterialResolution, MaterialResolver,
+    NativeMessagingHost, Platform, PlatformCapabilities, PlatformError, PlatformOs, RuntimeTarget,
+    SingleInstancePolicy, TrayIcon, WindowChrome, WindowHandle, WindowId, WindowOptions,
 };
 use stuk_style::{Material, Theme};
 
@@ -106,6 +107,18 @@ impl Platform for MacosPlatform {
         self.inner.set_chrome(window, chrome);
     }
 
+    fn set_window_visible(&mut self, window: WindowId, visible: bool) -> bool {
+        self.inner.set_window_visible(window, visible)
+    }
+
+    fn present_window(&mut self, window: WindowId) -> bool {
+        self.inner.present_window(window)
+    }
+
+    fn set_window_always_on_top(&mut self, window: WindowId, always_on_top: bool) -> bool {
+        self.inner.set_window_always_on_top(window, always_on_top)
+    }
+
     fn register_actions(&mut self, actions: &[ActionDescriptor]) {
         self.inner.register_actions(actions);
     }
@@ -128,6 +141,38 @@ impl Platform for MacosPlatform {
 
     fn backend(&self) -> BackendDescriptor {
         self.inner.backend()
+    }
+
+    fn set_tray_icon(&mut self, icon: TrayIcon) -> bool {
+        self.inner.set_tray_icon(icon)
+    }
+
+    fn remove_tray_icon(&mut self, id: &str) -> bool {
+        self.inner.remove_tray_icon(id)
+    }
+
+    fn set_autostart(&mut self, entry: AutostartEntry) -> bool {
+        self.inner.set_autostart(entry)
+    }
+
+    fn register_global_shortcut(&mut self, registration: GlobalShortcutRegistration) -> bool {
+        self.inner.register_global_shortcut(registration)
+    }
+
+    fn unregister_global_shortcut(&mut self, id: &str) -> bool {
+        self.inner.unregister_global_shortcut(id)
+    }
+
+    fn register_deep_links(&mut self, registration: DeepLinkRegistration) -> bool {
+        self.inner.register_deep_links(registration)
+    }
+
+    fn register_native_messaging_host(&mut self, host: NativeMessagingHost) -> bool {
+        self.inner.register_native_messaging_host(host)
+    }
+
+    fn set_single_instance_policy(&mut self, policy: SingleInstancePolicy) -> bool {
+        self.inner.set_single_instance_policy(policy)
     }
 }
 

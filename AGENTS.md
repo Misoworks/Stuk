@@ -19,8 +19,8 @@
 - App metadata, permissions, windows, actions, and settings schema parsing belong in `crates/stuk-manifest`.
 - Devtools, inspector, preview, and bundle planning belong in `crates/stuk-devtools`.
 - CLI behavior belongs in `crates/stuk-cli`.
-- CEF-backed webview window support belongs in `crates/stuk-webview`.
-- Shared CEF runtime detection and management belong in `crates/stuk-web-runtime`.
+- CEF-backed webview windows and shared web runtime management belong in the separate Fenestra repo.
+- Stuk integration for webviews belongs in Fenestra's `stuk-fenestra` adapter crate.
 - Integration tests live in `tests/integration/`.
 - Benchmarks live in `benches/`.
 - Prefer semantic materials (`Maris`, `Luca`, `Surface`) over hardcoded blur behavior.

@@ -33,8 +33,9 @@ pub use backend::{
     current_desktop_os, current_native_backend,
 };
 pub use integration::{
-    FileDialogFilter, FileDialogMode, FileDialogOptions, FileDialogResult, GenericPlatform,
-    Platform, WindowHandle, WindowId,
+    AutostartEntry, DeepLinkRegistration, FileDialogFilter, FileDialogMode, FileDialogOptions,
+    FileDialogResult, GenericPlatform, GlobalShortcutRegistration, NativeMessagingHost, Platform,
+    SingleInstancePolicy, TrayIcon, TrayMenuItem, WindowHandle, WindowId,
 };
 pub use material::{MaterialEffect, MaterialResolution, MaterialResolver};
 pub use session::{SplitHint, StaccatoSession};
@@ -222,6 +223,14 @@ pub struct PlatformCapabilities {
     pub command_palette: bool,
     pub workspace_sessions: bool,
     pub native_notifications: bool,
+    pub tray_icons: bool,
+    pub autostart: bool,
+    pub global_shortcuts: bool,
+    pub deep_links: bool,
+    pub single_instance: bool,
+    pub native_messaging: bool,
+    pub secure_storage: bool,
+    pub credential_storage: bool,
     pub system_dark_mode: bool,
     pub high_contrast: bool,
 }
@@ -244,6 +253,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: false,
+            tray_icons: false,
+            autostart: false,
+            global_shortcuts: false,
+            deep_links: false,
+            single_instance: false,
+            native_messaging: false,
+            secure_storage: false,
+            credential_storage: false,
             system_dark_mode: true,
             high_contrast: false,
         }
@@ -266,6 +283,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
+            tray_icons: false,
+            autostart: true,
+            global_shortcuts: false,
+            deep_links: true,
+            single_instance: false,
+            native_messaging: true,
+            secure_storage: false,
+            credential_storage: false,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -288,6 +313,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
+            tray_icons: true,
+            autostart: true,
+            global_shortcuts: true,
+            deep_links: true,
+            single_instance: true,
+            native_messaging: true,
+            secure_storage: true,
+            credential_storage: true,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -310,6 +343,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
+            tray_icons: true,
+            autostart: true,
+            global_shortcuts: true,
+            deep_links: true,
+            single_instance: true,
+            native_messaging: true,
+            secure_storage: true,
+            credential_storage: true,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -332,6 +373,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
+            tray_icons: false,
+            autostart: false,
+            global_shortcuts: false,
+            deep_links: true,
+            single_instance: false,
+            native_messaging: false,
+            secure_storage: true,
+            credential_storage: true,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -354,6 +403,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
+            tray_icons: false,
+            autostart: false,
+            global_shortcuts: false,
+            deep_links: true,
+            single_instance: false,
+            native_messaging: false,
+            secure_storage: true,
+            credential_storage: true,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -376,6 +433,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: false,
+            tray_icons: false,
+            autostart: false,
+            global_shortcuts: false,
+            deep_links: true,
+            single_instance: false,
+            native_messaging: false,
+            secure_storage: false,
+            credential_storage: false,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -398,6 +463,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
+            tray_icons: true,
+            autostart: true,
+            global_shortcuts: true,
+            deep_links: true,
+            single_instance: true,
+            native_messaging: true,
+            secure_storage: true,
+            credential_storage: true,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -487,8 +560,22 @@ pub struct WindowRegion {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WindowRegionAdaptive {
     Full,
-    RoundedRect { radius: i32 },
-    RoundedLeft { width: i32, radius: i32 },
+    RoundedRect {
+        radius: i32,
+    },
+    RoundedLeft {
+        width: i32,
+        radius: i32,
+    },
+    TitlebarAndSidebar {
+        sidebar_width: i32,
+        titlebar_height: i32,
+        radius: i32,
+    },
+    ContentAfterSidebar {
+        sidebar_width: i32,
+        titlebar_height: i32,
+    },
 }
 
 impl WindowRegion {
@@ -556,6 +643,31 @@ impl WindowRegion {
         }
     }
 
+    pub fn adaptive_titlebar_sidebar(
+        sidebar_width: i32,
+        titlebar_height: i32,
+        radius: i32,
+    ) -> Self {
+        Self {
+            rects: Vec::new(),
+            adaptive: Some(WindowRegionAdaptive::TitlebarAndSidebar {
+                sidebar_width,
+                titlebar_height,
+                radius,
+            }),
+        }
+    }
+
+    pub fn adaptive_content_after_sidebar(sidebar_width: i32, titlebar_height: i32) -> Self {
+        Self {
+            rects: Vec::new(),
+            adaptive: Some(WindowRegionAdaptive::ContentAfterSidebar {
+                sidebar_width,
+                titlebar_height,
+            }),
+        }
+    }
+
     pub fn add_rect(mut self, x: i32, y: i32, width: i32, height: i32) -> Self {
         let rect = WindowRegionRect::new(x, y, width, height);
         if !rect.is_empty() {
@@ -578,8 +690,82 @@ impl WindowRegion {
                 width: sidebar_width,
                 radius,
             }) => WindowRegion::rounded_left(sidebar_width, height, radius).rects,
+            Some(WindowRegionAdaptive::TitlebarAndSidebar {
+                sidebar_width,
+                titlebar_height,
+                radius,
+            }) => {
+                WindowRegion::titlebar_sidebar(
+                    width,
+                    height,
+                    sidebar_width,
+                    titlebar_height,
+                    radius,
+                )
+                .rects
+            }
+            Some(WindowRegionAdaptive::ContentAfterSidebar {
+                sidebar_width,
+                titlebar_height,
+            }) => {
+                WindowRegion::content_after_sidebar(width, height, sidebar_width, titlebar_height)
+                    .rects
+            }
             None => self.rects.clone(),
         }
+    }
+
+    fn titlebar_sidebar(
+        width: i32,
+        height: i32,
+        sidebar_width: i32,
+        titlebar_height: i32,
+        radius: i32,
+    ) -> Self {
+        let mut region = Self::empty();
+        let width = width.max(0);
+        let height = height.max(0);
+        let sidebar_width = sidebar_width.clamp(0, width);
+        let titlebar_height = titlebar_height.clamp(0, height);
+        let radius = radius.min(width / 2).min(height / 2).max(0);
+
+        for y in 0..titlebar_height {
+            let inset = if radius > 0 && y < radius {
+                rounded_region_row_inset(y, radius * 2, radius)
+            } else {
+                0
+            };
+            region = region.add_rect(inset, y, width - inset * 2, 1);
+        }
+
+        for y in titlebar_height..height {
+            let inset = if radius > 0 && y >= height - radius {
+                rounded_region_row_inset(y, height, radius)
+            } else {
+                0
+            };
+            region = region.add_rect(inset, y, sidebar_width - inset, 1);
+        }
+
+        region
+    }
+
+    fn content_after_sidebar(
+        width: i32,
+        height: i32,
+        sidebar_width: i32,
+        titlebar_height: i32,
+    ) -> Self {
+        let width = width.max(0);
+        let height = height.max(0);
+        let sidebar_width = sidebar_width.clamp(0, width);
+        let titlebar_height = titlebar_height.clamp(0, height);
+        Self::rect(
+            sidebar_width,
+            titlebar_height,
+            width - sidebar_width,
+            height - titlebar_height,
+        )
     }
 }
 

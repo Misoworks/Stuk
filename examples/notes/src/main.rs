@@ -63,10 +63,14 @@ impl View for NotesWindow {
             .title("Notes")
             .size(920, 600)
             .glass()
+            .titlebar_sidebar_blur_region(260, 38, 14)
+            .content_opaque_region(260, 38)
+            .rounded_window_region(14)
             .content(
                 SplitView::new(
                     Sidebar::new()
                         .width(260.0)
+                        .opacity(0.42)
                         .child(Text::new("Notes").size(22.0))
                         .child(
                             Frame::new(Button::primary("New").align_start().action("notes.new"))
@@ -76,51 +80,57 @@ impl View for NotesWindow {
                         .child(self.note_list())
                         .child(Spacer::new())
                         .child(Text::new(format!("{} notes", self.notes.len())).muted()),
-                    Flex::column()
-                        .padding(28.0)
-                        .gap(12.0)
-                        .align(FlexAlign::Stretch)
-                        .fill_width()
-                        .fill_height()
-                        .child(
-                            Grid::new(
-                                vec![
-                                    GridTrack::fraction(1.0),
-                                    GridTrack::fixed(78.0),
-                                    GridTrack::fixed(82.0),
-                                ],
-                                vec![GridTrack::fixed(40.0)],
-                            )
-                            .column_gap(10.0)
+                    Surface::new(
+                        Flex::column()
+                            .padding(28.0)
+                            .gap(12.0)
+                            .align(FlexAlign::Stretch)
                             .fill_width()
-                            .cell(
-                                0,
-                                0,
-                                TextField::new(note.title.text())
-                                    .placeholder("Title")
-                                    .focused(self.input.is_focused("Title"))
-                                    .selection(title_selection.anchor, title_selection.focus),
-                            )
-                            .cell(1, 0, Button::secondary("Save").action("notes.save"))
-                            .cell(
-                                2,
-                                0,
-                                Button::ghost("Delete").action("notes.delete"),
-                            ),
-                        )
-                        .flex_child(
-                            FlexChildElement::new(
-                                Frame::new(
-                                    TextArea::new(note.body.text())
-                                        .placeholder("Body")
-                                        .focused(self.input.is_focused("Body"))
-                                        .selection(body_selection.anchor, body_selection.focus),
+                            .fill_height()
+                            .child(
+                                Grid::new(
+                                    vec![
+                                        GridTrack::fraction(1.0),
+                                        GridTrack::fixed(78.0),
+                                        GridTrack::fixed(82.0),
+                                    ],
+                                    vec![GridTrack::fixed(40.0)],
                                 )
+                                .column_gap(10.0)
                                 .fill_width()
-                                .fill_height(),
+                                .cell(
+                                    0,
+                                    0,
+                                    TextField::new(note.title.text())
+                                        .placeholder("Title")
+                                        .focused(self.input.is_focused("Title"))
+                                        .selection(title_selection.anchor, title_selection.focus),
+                                )
+                                .cell(1, 0, Button::secondary("Save").action("notes.save"))
+                                .cell(
+                                    2,
+                                    0,
+                                    Button::ghost("Delete").action("notes.delete"),
+                                ),
                             )
-                            .grow(1.0),
-                        ),
+                            .flex_child(
+                                FlexChildElement::new(
+                                    Frame::new(
+                                        TextArea::new(note.body.text())
+                                            .placeholder("Body")
+                                            .focused(self.input.is_focused("Body"))
+                                            .selection(body_selection.anchor, body_selection.focus),
+                                    )
+                                    .fill_width()
+                                    .fill_height(),
+                                )
+                                .grow(1.0),
+                            ),
+                    )
+                    .material(Material::Solid(Color::rgb(0.09, 0.09, 0.09)))
+                    .corner_radius(0.0)
+                    .fill_width()
+                    .fill_height(),
                 )
                 .initial_ratio(0.28)
                 .resizable(true),

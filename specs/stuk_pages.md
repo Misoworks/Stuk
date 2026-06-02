@@ -161,7 +161,7 @@ Stuk templates should start simple, but support growing into this structure.
 
 ## 3. WebView App Structure
 
-For Stuk WebView apps:
+For Stuk + Fenestra WebView apps:
 
 ```txt
 notes-app/
@@ -191,7 +191,7 @@ notes-app/
 │       ├── views/
 │       ├── components/
 │       └── lib/
-│           └── stuk.ts
+│           └── fenestra.ts
 ├── assets/
 └── tests/
 ```
@@ -207,10 +207,12 @@ Rules:
 - Web components live in `ui/src/components/`.
 - Web pages/screens live in `ui/src/views/`.
 - Shared action IDs should be declared in `Stuk.toml`.
-- Runtime install, native window chrome, drag regions, window controls, and webview hosting belong
-  to Stuk, not the app.
+- Runtime install, CEF host management, browser profiles, and webview bridge transport belong to
+  Fenestra, not the app.
+- Native window chrome, drag regions, window controls, actions, permissions, settings, and platform
+  materials belong to Stuk through `stuk-fenestra`, not the app.
 - Shared CEF runtime files are reusable across apps; browser profile/cache paths are isolated and
-  managed by Stuk so concurrent windows do not fight over CEF process-singleton state.
+  managed by Fenestra so concurrent windows do not fight over CEF process-singleton state.
 - WebView apps using Stuk chrome should not provide their own titlebars or window controls. Stuk owns
   native chrome, drag behavior, resize behavior, and close/minimize/maximize actions.
 - WebView apps should declare glass/blur/input/opaque regions through Stuk window/webview

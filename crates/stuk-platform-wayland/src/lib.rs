@@ -1,17 +1,23 @@
 #[allow(dead_code)]
 mod blur;
+mod desktop_services;
 
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    BackendDescriptor, ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform,
-    MaterialEffect, MaterialResolution, MaterialResolver, Platform, PlatformCapabilities,
-    PlatformError, WindowChrome, WindowHandle, WindowId, WindowOptions,
+    AutostartEntry, BackendDescriptor, ClipboardData, DeepLinkRegistration, FileDialogOptions,
+    FileDialogResult, GenericPlatform, GlobalShortcutRegistration, MaterialEffect,
+    MaterialResolution, MaterialResolver, NativeMessagingHost, Platform, PlatformCapabilities,
+    PlatformError, SingleInstancePolicy, TrayIcon, WindowChrome, WindowHandle, WindowId,
+    WindowOptions,
 };
 use stuk_style::{Material, Theme};
+
+use crate::desktop_services::LinuxDesktopServices;
 
 #[derive(Debug)]
 pub struct WaylandPlatform {
     inner: GenericPlatform,
+    desktop_services: LinuxDesktopServices,
     background_effects: bool,
 }
 
@@ -25,6 +31,7 @@ impl WaylandPlatform {
             inner: GenericPlatform::with_backend(BackendDescriptor::linux_wayland(
                 background_effects,
             )),
+            desktop_services: LinuxDesktopServices,
             background_effects,
         }
     }
@@ -89,6 +96,18 @@ impl Platform for WaylandPlatform {
         self.inner.set_chrome(window, chrome);
     }
 
+    fn set_window_visible(&mut self, window: WindowId, visible: bool) -> bool {
+        self.inner.set_window_visible(window, visible)
+    }
+
+    fn present_window(&mut self, window: WindowId) -> bool {
+        self.inner.present_window(window)
+    }
+
+    fn set_window_always_on_top(&mut self, window: WindowId, always_on_top: bool) -> bool {
+        self.inner.set_window_always_on_top(window, always_on_top)
+    }
+
     fn register_actions(&mut self, actions: &[ActionDescriptor]) {
         self.inner.register_actions(actions);
     }
@@ -111,6 +130,47 @@ impl Platform for WaylandPlatform {
 
     fn backend(&self) -> BackendDescriptor {
         self.inner.backend()
+    }
+
+    fn set_tray_icon(&mut self, _icon: TrayIcon) -> bool {
+        false
+    }
+
+    fn remove_tray_icon(&mut self, _id: &str) -> bool {
+        false
+    }
+
+    fn set_autostart(&mut self, entry: AutostartEntry) -> bool {
+        if !self.desktop_services.set_autostart(&entry) {
+            return false;
+        }
+        self.inner.set_autostart(entry)
+    }
+
+    fn register_global_shortcut(&mut self, _registration: GlobalShortcutRegistration) -> bool {
+        false
+    }
+
+    fn unregister_global_shortcut(&mut self, _id: &str) -> bool {
+        false
+    }
+
+    fn register_deep_links(&mut self, registration: DeepLinkRegistration) -> bool {
+        if !self.desktop_services.register_deep_links(&registration) {
+            return false;
+        }
+        self.inner.register_deep_links(registration)
+    }
+
+    fn register_native_messaging_host(&mut self, host: NativeMessagingHost) -> bool {
+        if !self.desktop_services.register_native_messaging_host(&host) {
+            return false;
+        }
+        self.inner.register_native_messaging_host(host)
+    }
+
+    fn set_single_instance_policy(&mut self, _policy: SingleInstancePolicy) -> bool {
+        false
     }
 }
 

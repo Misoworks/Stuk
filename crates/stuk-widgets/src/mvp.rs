@@ -213,6 +213,11 @@ impl Sidebar {
         self
     }
 
+    pub fn opacity(mut self, opacity: f32) -> Self {
+        self.element.opacity = opacity.clamp(0.0, 1.0);
+        self
+    }
+
     pub fn child(mut self, child: impl Into<Element>) -> Self {
         self.element.children.push(child.into());
         self

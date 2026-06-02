@@ -2162,7 +2162,6 @@ dependencies = [
  "clap",
  "stuk-devtools",
  "stuk-manifest",
- "stuk-web-runtime",
 ]
 
 [[package]]
@@ -2333,32 +2332,6 @@ dependencies = [
 [[package]]
 name = "stuk-text"
 version = "0.1.0"
-
-[[package]]
-name = "stuk-web-runtime"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "stuk-webview"
-version = "0.1.0"
-dependencies = [
- "pollster",
- "raw-window-handle",
- "serde_json",
- "stuk",
- "stuk-platform",
- "stuk-render",
- "stuk-style",
- "stuk-web-runtime",
- "thiserror 2.0.18",
- "winit",
- "x11rb",
-]
 
 [[package]]
 name = "stuk-widgets"
@@ -2865,16 +2838,6 @@ dependencies = [
  "log",
  "once_cell",
  "pkg-config",
-]
-
-[[package]]
-name = "web-runtime"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "stuk",
- "stuk-web-runtime",
- "stuk-webview",
 ]
 
 [[package]]
