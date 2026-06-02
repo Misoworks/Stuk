@@ -20,30 +20,45 @@ pub use stuk_core::{
 };
 pub use stuk_devtools::{
     AccessibilityDiagnosticInspection, AccessibilityInspection, ActionInspection, AppInspection,
-    BundlePlan, BundleTarget, CapabilityInspection, DiagnosticInspection, ElementSnapshot,
-    FrameHealth, LayoutSnapshot, ManifestInspection, MaterialInspection, PerformanceOverlay,
-    PerformanceSample, PermissionInspection, PlatformInspection, PreviewDescriptor, PreviewElement,
-    PreviewRegistry, StaccatoBundleMetadata, WindowInspection, inspect_accessibility,
-    inspect_element, inspect_layout, inspect_layout_for_window, inspect_manifest,
-    inspect_manifest_with_base_dir, inspect_platform, preview,
+    BackendInspection, BundlePlan, BundleTarget, CapabilityInspection, DiagnosticInspection,
+    ElementSnapshot, FrameHealth, LayoutSnapshot, ManifestInspection, MaterialInspection,
+    PerformanceOverlay, PerformanceSample, PermissionInspection, PlatformInspection,
+    PreviewDescriptor, PreviewElement, PreviewRegistry, StaccatoBundleMetadata, TargetInspection,
+    WindowInspection, inspect_accessibility, inspect_element, inspect_layout,
+    inspect_layout_for_window, inspect_manifest, inspect_manifest_with_base_dir, inspect_platform,
+    preview,
 };
 pub use stuk_layout::{
-    Axis, EdgeInsets, FlexAlign, FlexItem, FlexJustify, FlexLayout, FlexWrap, GridItem, GridLayout,
-    GridTrack, Length, Point, Rect, Size, flex_layout, grid_layout,
+    Axis, Breakpoint, EdgeInsets, FlexAlign, FlexItem, FlexJustify, FlexLayout, FlexWrap, GridItem,
+    GridLayout, GridTrack, Length, Point, Rect, Responsive, Size, flex_layout, grid_layout,
 };
 pub use stuk_manifest as manifest;
 pub use stuk_platform::{
-    ClipboardData, FileDialogFilter, FileDialogMode, FileDialogOptions, FileDialogResult,
-    GenericPlatform, MaterialEffect, MaterialResolution, MaterialResolver, Platform,
-    PlatformCapabilities, WindowBackgroundEffect, WindowChrome, WindowHandle, WindowId,
-    read_clipboard_text, write_clipboard_text,
+    AppTarget, BackendDescriptor, BackendKind, BackendStatus, ClipboardData, FileDialogFilter,
+    FileDialogMode, FileDialogOptions, FileDialogResult, GenericPlatform, MaterialEffect,
+    MaterialResolution, MaterialResolver, Platform, PlatformCapabilities, PlatformFamily,
+    PlatformOs, PlatformOverride, PlatformOverrideKind, PlatformOverrideRegistry, RuntimeTarget,
+    TargetSet, WindowBackgroundEffect, WindowChrome, WindowHandle, WindowId, current_desktop_os,
+    current_native_backend, read_clipboard_text, write_clipboard_text,
 };
-pub use stuk_platform_macos::{MacosPlatform, MacosVibrancy, macos_capabilities};
+pub use stuk_platform_android::{
+    AndroidLifecyclePhase, AndroidNavigationMode, AndroidPlatform, AndroidShellOptions,
+    android_backend, android_capabilities,
+};
+pub use stuk_platform_ios::{
+    IosPlatform, IosScenePhase, IosShellOptions, IosStatusBarStyle, ios_backend, ios_capabilities,
+};
+pub use stuk_platform_macos::{MacosPlatform, MacosVibrancy, macos_backend, macos_capabilities};
 pub use stuk_platform_staccato::{
-    SplitHint, StaccatoPlatform, StaccatoSession, staccato_capabilities,
+    SplitHint, StaccatoPlatform, StaccatoSession, staccato_backend, staccato_capabilities,
 };
-pub use stuk_platform_wayland::{WaylandPlatform, wayland_capabilities};
-pub use stuk_platform_windows::{WindowsBackdrop, WindowsPlatform, windows_capabilities};
+pub use stuk_platform_wayland::{WaylandPlatform, wayland_backend, wayland_capabilities};
+pub use stuk_platform_web::{
+    WebCanvasOptions, WebPlatform, WebRunOptions, web_backend, web_capabilities,
+};
+pub use stuk_platform_windows::{
+    WindowsBackdrop, WindowsPlatform, windows_backend, windows_capabilities,
+};
 pub use stuk_render::{
     BorderCommand, ClipCommand, DisplayCommand, DisplayDamage, DisplayList, ImageCommand,
     MaterialCommand, RectCommand, RoundedRectCommand, ShadowCommand, SvgCommand, TextCommand,
@@ -58,14 +73,15 @@ pub use stuk_style::{
 };
 pub use stuk_text::{TextComposition, TextInputState, TextRange, TextSelection};
 pub use stuk_widgets::{
-    Avatar, Badge, Button, Card, Center, Checkbox, ColorWell, CommandPalette, ContextMenu, Dialog,
-    Divider, Dropdown, DropdownOption, EmptyState, ErrorView, Flex, Form, FormRow, Frame, Grid,
-    HStack, IconButton, Image, Label, List, Menu, MenuItem, MutationView, NavigationItem,
-    NavigationView, Overlay, PasswordField, Popover, ProgressBar, Radio, ResizablePane,
-    ResourceView, ScrollView, SearchField, SegmentedControl, SelectableText, SettingsPage, Sidebar,
-    SidebarLayout, Slider, Spacer, Spinner, SplitView, Surface, Svg, Table, TableColumn, TableRow,
-    Tabs, Text, TextArea, TextEditorLite, TextField, Titlebar, Toast, ToastKind, Toggle, Toolbar,
-    Tooltip, Tree, TreeNode, VStack, VirtualList, Window, ZStack,
+    AppShell, Avatar, Badge, Button, Card, Center, Checkbox, ColorWell, CommandBar, CommandPalette,
+    ContextMenu, Dialog, Divider, Dropdown, DropdownOption, EmptyState, ErrorView, Flex, Form,
+    FormRow, Frame, Grid, HStack, IconButton, Image, Label, List, ListSection, Menu, MenuItem,
+    MutationView, NavigationItem, NavigationView, Overlay, PageShell, Pane, PasswordField, Popover,
+    ProgressBar, Radio, ResizablePane, ResourceView, ScrollView, SearchField, SegmentedControl,
+    SelectableText, SettingsPage, Sidebar, SidebarLayout, Slider, Spacer, Spinner, SplitView,
+    Surface, Svg, Table, TableColumn, TableRow, Tabs, Text, TextArea, TextEditorLite, TextField,
+    Titlebar, Toast, ToastKind, Toggle, Toolbar, Tooltip, Tree, TreeNode, VStack, VirtualList,
+    Window, ZStack,
 };
 
 #[macro_export]
@@ -124,43 +140,52 @@ pub mod prelude {
         AccessKitNode, AccessibilityDiagnostic, AccessibilityDiagnosticInspection,
         AccessibilityDiagnosticKind, AccessibilityDiagnosticLevel, AccessibilityInspection,
         AccessibilityNode, AccessibilityRole, AccessibilityToggled, AccessibilityTree,
-        ActionDescriptor, ActionInspection, ActionRegistry, AnimationTokens, App, AppInspection,
-        Avatar, Badge, BorderCommand, BundlePlan, BundleTarget, Button, ButtonVariant,
-        CancellationToken, CapabilityInspection, Card, Center, Checkbox, ClipCommand,
-        ClipboardData, Color, ColorTokens, ColorWell, CommandPalette, Component, ComponentState,
-        ContextMenu, Cx, Density, DiagnosticInspection, Dialog, DisplayCommand, DisplayDamage,
-        DisplayList, Divider, Dropdown, DropdownOption, Element, ElementSnapshot, EmptyState,
-        ErrorView, FileDialogFilter, FileDialogMode, FileDialogOptions, FileDialogResult, Flex,
-        FlexAlign, FlexChildElement, FlexElement, FlexItem, FlexJustify, FlexLayout, FlexWrap,
-        FocusDirection, FocusTarget, FocusTraversal, FontTokens, Form, FormRow, Frame, FrameHealth,
-        GenericPlatform, Grid, GridChildElement, GridElement, GridItem, GridLayout, GridTrack,
-        HStack, IconButton, Image, ImageCommand, IntoView, Label, LayoutSnapshot, Length, List,
-        MacosPlatform, MacosVibrancy, ManifestInspection, Material, MaterialCommand,
-        MaterialEffect, MaterialInspection, MaterialResolution, MaterialResolver, MediaElement,
-        MediaSource, Menu, MenuItem, Modifiers, Mutation, MutationState, MutationView,
-        NavigationItem, NavigationSplitState, NavigationStack, NavigationView, NumberSpacing,
-        Overlay, OverlayAlignment, OverlayElement, Page, PageCursor, PageId, PaginatedResource,
-        PaginatedResourcePhase, PaginatedResourceSnapshot, PaginationCxExt, PaginationMode,
-        PasswordField, PerformanceOverlay, PerformanceSample, PermissionInspection, Platform,
-        PlatformCapabilities, PlatformInspection, Popover, PreviewDescriptor, PreviewElement,
+        ActionDescriptor, ActionInspection, ActionRegistry, AndroidLifecyclePhase,
+        AndroidNavigationMode, AndroidPlatform, AndroidShellOptions, AnimationTokens, App,
+        AppInspection, AppShell, AppTarget, Avatar, BackendDescriptor, BackendInspection,
+        BackendKind, BackendStatus, Badge, BorderCommand, BundlePlan, BundleTarget, Button,
+        ButtonVariant, CancellationToken, CapabilityInspection, Card, Center, Checkbox,
+        ClipCommand, ClipboardData, Color, ColorTokens, ColorWell, CommandBar, CommandPalette,
+        Component, ComponentState, ContextMenu, Cx, Density, DiagnosticInspection, Dialog,
+        DisplayCommand, DisplayDamage, DisplayList, Divider, Dropdown, DropdownOption, Element,
+        ElementSnapshot, EmptyState, ErrorView, FileDialogFilter, FileDialogMode,
+        FileDialogOptions, FileDialogResult, Flex, FlexAlign, FlexChildElement, FlexElement,
+        FlexItem, FlexJustify, FlexLayout, FlexWrap, FocusDirection, FocusTarget, FocusTraversal,
+        FontTokens, Form, FormRow, Frame, FrameHealth, GenericPlatform, Grid, GridChildElement,
+        GridElement, GridItem, GridLayout, GridTrack, HStack, IconButton, Image, ImageCommand,
+        IntoView, IosPlatform, IosScenePhase, IosShellOptions, IosStatusBarStyle, Label,
+        LayoutSnapshot, Length, List, ListSection, MacosPlatform, MacosVibrancy,
+        ManifestInspection, Material, MaterialCommand, MaterialEffect, MaterialInspection,
+        MaterialResolution, MaterialResolver, MediaElement, MediaSource, Menu, MenuItem, Modifiers,
+        Mutation, MutationState, MutationView, NavigationItem, NavigationSplitState,
+        NavigationStack, NavigationView, NumberSpacing, Overlay, OverlayAlignment, OverlayElement,
+        Page, PageCursor, PageId, PageShell, PaginatedResource, PaginatedResourcePhase,
+        PaginatedResourceSnapshot, PaginationCxExt, PaginationMode, Pane, PasswordField,
+        PerformanceOverlay, PerformanceSample, PermissionInspection, Platform,
+        PlatformCapabilities, PlatformFamily, PlatformInspection, PlatformOs, PlatformOverride,
+        PlatformOverrideKind, PlatformOverrideRegistry, Popover, PreviewDescriptor, PreviewElement,
         PreviewRegistry, ProgressBar, Radio, RadiusTokens, RectCommand, ResizablePane, Resource,
-        ResourceState, ResourceView, Result, RoundedRectCommand, RouteState, Screen, ScrollView,
-        SearchField, SegmentedControl, SelectableText, SessionCx, SettingDefinition, SettingKind,
-        SettingValue, SettingsPage, SettingsSchema, SettingsStore, ShadowCommand, Shortcut,
-        Sidebar, SidebarLayout, Signal, Slider, Spacer, SpacingTokens, Spinner, SplitHint,
-        SplitView, StaccatoBundleMetadata, StaccatoCx, StaccatoPlatform, StaccatoSession, Surface,
-        SurfaceBorder, SurfaceElement, SurfaceShadow, Svg, SvgCommand, Table, TableColumn,
-        TableRow, Tabs, TaskHandle, Text, TextAlign, TextArea, TextCommand, TextComposition,
-        TextEditorLite, TextField, TextInputAction, TextInputManager, TextInputResolver,
-        TextInputState, TextRange, TextSelection, TextWrap, Theme, ThemeMode, Titlebar, Toast,
-        ToastKind, Toggle, Toolbar, Tooltip, TransformCommand, Tree, TreeNode, VStack, View,
-        VirtualList, WaylandPlatform, Window, WindowBackgroundEffect, WindowChrome, WindowHandle,
-        WindowId, WindowInspection, WindowsBackdrop, WindowsPlatform, ZStack, actions,
+        ResourceState, ResourceView, Result, RoundedRectCommand, RouteState, RuntimeTarget, Screen,
+        ScrollView, SearchField, SegmentedControl, SelectableText, SessionCx, SettingDefinition,
+        SettingKind, SettingValue, SettingsPage, SettingsSchema, SettingsStore, ShadowCommand,
+        Shortcut, Sidebar, SidebarLayout, Signal, Slider, Spacer, SpacingTokens, Spinner,
+        SplitHint, SplitView, StaccatoBundleMetadata, StaccatoCx, StaccatoPlatform,
+        StaccatoSession, Surface, SurfaceBorder, SurfaceElement, SurfaceShadow, Svg, SvgCommand,
+        Table, TableColumn, TableRow, Tabs, TargetInspection, TargetSet, TaskHandle, Text,
+        TextAlign, TextArea, TextCommand, TextComposition, TextEditorLite, TextField,
+        TextInputAction, TextInputManager, TextInputResolver, TextInputState, TextRange,
+        TextSelection, TextWrap, Theme, ThemeMode, Titlebar, Toast, ToastKind, Toggle, Toolbar,
+        Tooltip, TransformCommand, Tree, TreeNode, VStack, View, VirtualList, WaylandPlatform,
+        WebCanvasOptions, WebPlatform, WebRunOptions, Window, WindowBackgroundEffect, WindowChrome,
+        WindowHandle, WindowId, WindowInspection, WindowsBackdrop, WindowsPlatform, ZStack,
+        actions, android_backend, android_capabilities, current_desktop_os, current_native_backend,
         cursor_resource, flex_layout, focus_targets, grid_layout, inspect_accessibility,
         inspect_element, inspect_layout, inspect_layout_for_window, inspect_manifest,
-        inspect_manifest_with_base_dir, inspect_platform, macos_capabilities, mutation,
-        paginated_resource, preview, read_clipboard_text, resource, resource_value, signal,
-        spawn_cancellable_task, spawn_task, staccato_capabilities, validate_accessibility,
-        wayland_capabilities, windows_capabilities, write_clipboard_text,
+        inspect_manifest_with_base_dir, inspect_platform, ios_backend, ios_capabilities,
+        macos_backend, macos_capabilities, mutation, paginated_resource, preview,
+        read_clipboard_text, resource, resource_value, signal, spawn_cancellable_task, spawn_task,
+        staccato_backend, staccato_capabilities, validate_accessibility, wayland_backend,
+        wayland_capabilities, web_backend, web_capabilities, windows_backend, windows_capabilities,
+        write_clipboard_text,
     };
 }

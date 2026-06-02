@@ -1,8 +1,10 @@
 mod flex;
 mod grid;
+mod responsive;
 
 pub use flex::{FlexAlign, FlexItem, FlexJustify, FlexLayout, FlexWrap, flex_layout};
 pub use grid::{GridItem, GridLayout, GridTrack, grid_layout};
+pub use responsive::{Breakpoint, Responsive};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Size {

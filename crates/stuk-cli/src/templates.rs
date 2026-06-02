@@ -72,6 +72,15 @@ chrome = "system"
 transparent = false
 background_effect = "none"
 
+[targets]
+desktop = true
+linux = true
+windows = true
+macos = true
+android = false
+ios = false
+web = false
+
 [permissions]
 network = false
 notifications = false
@@ -125,10 +134,13 @@ pub fn agents_md() -> String {
 
 - Views live in `src/views/`.
 - Reusable UI components live in `src/components/`.
+- Shared domain logic lives in `src/domain/`.
+- Platform-specific services or UI overrides live in `src/platforms/`.
 - App state lives in `src/state.rs`.
 - User actions live in `src/actions.rs`.
 - Runtime settings schema lives in `src/settings.rs`.
 - App metadata, permissions, windows, actions, and settings schema live in `Stuk.toml`.
+- Keep platform-specific imports out of shared views/components unless routed through `src/platforms/`.
 - Prefer existing Stuk widgets before custom drawing.
 - Use semantic materials (`Maris`, `Luca`, `Surface`) instead of hardcoded blur.
 - Run `stuk validate` after manifest changes.
@@ -142,6 +154,9 @@ pub fn main_rs(context: &ProjectContext) -> String {
         r#"mod actions;
 mod app;
 mod components;
+mod domain;
+mod platforms;
+mod services;
 mod settings;
 mod state;
 mod views;
@@ -243,6 +258,90 @@ impl Default for AppState {
             last_action: None,
         }
     }
+}
+"#
+    .to_string()
+}
+
+pub fn platforms_mod_rs() -> String {
+    r#"pub mod desktop;
+pub mod mobile;
+pub mod web;
+
+use stuk::prelude::*;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlatformUi {
+    Desktop,
+    Mobile,
+    Web,
+}
+
+impl PlatformUi {
+    pub fn for_cx(cx: &Cx) -> Self {
+        if cx.is_web() {
+            Self::Web
+        } else if cx.is_mobile() {
+            Self::Mobile
+        } else {
+            Self::Desktop
+        }
+    }
+}
+
+pub fn overrides() -> PlatformOverrideRegistry {
+    let mut registry = PlatformOverrideRegistry::new();
+    desktop::register_overrides(&mut registry);
+    mobile::register_overrides(&mut registry);
+    web::register_overrides(&mut registry);
+    registry
+}
+"#
+    .to_string()
+}
+
+pub fn platforms_desktop_rs() -> String {
+    r#"use stuk::prelude::*;
+
+pub fn register_overrides(registry: &mut PlatformOverrideRegistry) {
+    registry.register(PlatformOverride::new(
+        AppTarget::Desktop,
+        PlatformOverrideKind::AppShell,
+        "main",
+    ));
+}
+"#
+    .to_string()
+}
+
+pub fn platforms_mobile_rs() -> String {
+    r#"use stuk::prelude::*;
+
+pub fn register_overrides(registry: &mut PlatformOverrideRegistry) {
+    registry.register(PlatformOverride::new(
+        AppTarget::Android,
+        PlatformOverrideKind::AppShell,
+        "main",
+    ));
+    registry.register(PlatformOverride::new(
+        AppTarget::Ios,
+        PlatformOverrideKind::AppShell,
+        "main",
+    ));
+}
+"#
+    .to_string()
+}
+
+pub fn platforms_web_rs() -> String {
+    r#"use stuk::prelude::*;
+
+pub fn register_overrides(registry: &mut PlatformOverrideRegistry) {
+    registry.register(PlatformOverride::new(
+        AppTarget::Web,
+        PlatformOverrideKind::AppShell,
+        "main",
+    ));
 }
 "#
     .to_string()

@@ -19,10 +19,12 @@ pub use element::{
 pub use layout_metrics::LayoutMetrics;
 pub use manifest::{
     ActionInspection, AppInspection, DiagnosticInspection, ManifestInspection,
-    PermissionInspection, WindowInspection, inspect_manifest, inspect_manifest_with_base_dir,
+    PermissionInspection, TargetInspection, WindowInspection, inspect_manifest,
+    inspect_manifest_with_base_dir,
 };
 pub use performance::{FrameHealth, PerformanceOverlay, PerformanceSample};
 pub use platform::{
-    CapabilityInspection, MaterialInspection, PlatformInspection, inspect_platform,
+    BackendInspection, CapabilityInspection, MaterialInspection, PlatformInspection,
+    inspect_platform,
 };
 pub use preview::{PreviewDescriptor, PreviewElement, PreviewRegistry};

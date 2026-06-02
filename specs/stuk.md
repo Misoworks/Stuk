@@ -2,9 +2,9 @@
 
 ## 0. Purpose
 
-Stuk is a native UI framework and app-integration system for desktop apps.
+Stuk is a native UI framework and app-integration system for desktop, mobile, and web apps.
 
-Its purpose is to make native desktop development feel as fast and pleasant as modern web development, while keeping native rendering, low overhead, deep OS integration, accessibility, and platform-native background effects.
+Its purpose is to make native app development feel as fast and pleasant as modern web development, while keeping native rendering, low overhead, deep platform integration, accessibility, and platform-native background effects where the target supports them.
 
 Stuk is not “GTK but prettier.” It is a Rust-first, GPU-rendered, declarative native framework designed around:
 
@@ -16,7 +16,7 @@ Stuk is not “GTK but prettier.” It is a Rust-first, GPU-rendered, declarativ
 - OS-level integration
 - fast devtools
 - agent-friendly project structure
-- cross-platform fallback
+- cross-platform desktop, mobile, and web fallback
 - platform-native window chrome, blur, vibrancy, and fallback surfaces
 
 The core promise:
@@ -143,7 +143,7 @@ Stuk must:
 11. Support component previews.
 12. Support a real inspector.
 13. Be strongly structured for AI coding agents.
-14. Be cross-platform where practical.
+14. Target Linux, Windows, macOS, Android, iOS, and WebAssembly/web where practical.
 15. Degrade gracefully when platform features are missing.
 16. Be measurable and aggressively performant.
 
@@ -161,11 +161,55 @@ Non-goals for the first versions:
 
 ## 4. Platform Strategy
 
-Stuk has platform tiers.
+Stuk has platform tiers. The app-facing component, state, style, layout, text, action, and rendering model should be shared across all targets. Each platform backend owns window/surface creation, input, IME, accessibility, clipboard, permissions, packaging, and native capability resolution.
+
+### Tier 1: Desktop
+
+Primary production target:
+
+- Linux Wayland first, X11 compatibility
+- Windows
+- macOS
+- native windows
+- wgpu rendering
+- system clipboard
+- drag and drop
+- notifications where available
+- IME
+- accessibility
+- native background effects where available
+- Stuk chrome or system chrome
+
+### Tier 2: Mobile
+
+First-class target once the desktop core is stable:
+
+- Android
+- iOS
+- wgpu surface rendering
+- touch/pointer input
+- virtual keyboard and IME
+- safe-area insets
+- app lifecycle suspend/resume
+- mobile accessibility trees
+- platform permissions
+- app store packaging metadata
+
+### Tier 3: Web
+
+Supported through a WASM + canvas/WebGPU shell:
+
+- shared Stuk view/layout/state code
+- Stuk-created browser canvas appended and focused by the framework by default
+- WebGPU preferred, WebGL/canvas fallback only if viable
+- browser clipboard and file APIs through permission-gated adapters
+- DOM-free widget rendering by default
+- web accessibility mapping where practical
+- no native blur promises beyond what browser APIs can honestly provide
 
 ### Future Tier: Staccato / Glacier
 
-Best experience once those platform APIs exist. These APIs are not required for Stuk v1:
+Best experience once those platform APIs exist:
 
 - Baton compositor material integration
 - Luca live blur
@@ -177,33 +221,6 @@ Best experience once those platform APIs exist. These APIs are not required for 
 - Staccato settings integration
 - app permissions integration
 - Staccato-native chrome
-
-### Tier 2: Windows / macOS
-
-Good experience:
-
-- native windows
-- wgpu rendering
-- system clipboard
-- drag and drop
-- notifications
-- IME
-- accessibility
-- material mapping where available
-- native-ish window chrome options
-
-### Tier 3: Generic Linux
-
-Functional experience:
-
-- Wayland/X11 windows
-- wgpu rendering
-- clipboard
-- drag/drop where possible
-- accessibility where possible
-- compositor background effects when available
-- solid fallback surfaces when effects are unavailable
-- XDG integration
 
 Apps request platform features. Platforms resolve them and report whether the effect actually worked.
 
@@ -218,6 +235,75 @@ Window backdrop effect
 ```
 
 Materials such as Maris and Luca are future semantic names. Stuk v1 should expose plain platform background-effect requests and platform overrides first; semantic materials should be added when there is a concrete app use case.
+
+### Target and UI Reuse Models
+
+Stuk apps should be able to choose how much UI they share:
+
+```txt
+Shared UI:
+  one Stuk component tree adapts across desktop, mobile, and web through responsive layout,
+  capabilities, and target-aware services.
+
+Shared logic, platform UI:
+  domain/state/services are shared, while desktop/mobile/web each provide their own shell,
+  navigation, or pages.
+
+Base UI with overrides:
+  most views are shared, but a target can replace a page, component, route, or command behavior.
+```
+
+Recommended structure for apps that need platform variation:
+
+```txt
+src/
+├── domain/              # pure app logic, no platform imports
+├── state.rs             # shared app state
+├── services/            # capability-facing traits and shared service orchestration
+├── views/               # shared Stuk UI
+├── components/          # shared reusable UI
+└── platforms/
+    ├── mod.rs           # target selection boundary
+    ├── desktop.rs       # desktop shell/overrides
+    ├── mobile.rs        # mobile shell/overrides
+    ├── web.rs           # web shell/overrides
+    ├── linux.rs
+    ├── windows.rs
+    ├── macos.rs
+    ├── android.rs
+    └── ios.rs
+```
+
+Rules:
+
+- Shared domain logic must not import platform/window/webview crates directly.
+- Shared views/components should prefer `Cx` capabilities, responsive layout, and service traits over
+  `cfg` branches.
+- Target-specific imports belong in `src/platforms/`, platform crates, or generated boundary files.
+- Platform overrides should replace clear units: app shell, route/page, component, command, or
+  service implementation.
+- Unsupported features must be represented as capabilities or typed errors, not hidden panics.
+- `stuk validate` should flag unsupported target/runtime combinations and broad bridge permissions.
+- `Cx` exposes the resolved backend descriptor, runtime target, and capabilities so shared UI can
+  branch on `cx.is_desktop()`, `cx.is_mobile()`, `cx.is_web()`, or `cx.capabilities()` without
+  scattering platform imports through views.
+- `App` may be given an explicit `BackendDescriptor` for platform override testing or alternate
+  runners. In normal apps it defaults to the current native/backend target.
+- `TargetSet` and backend descriptors are the framework-level boundary between manifests, build
+  tooling, and app code. Desktop can be generic (`desktop = true`) or narrowed by OS; mobile and web
+  must be explicit.
+- `PlatformOverrideRegistry` records target-specific replacements for app shells, pages,
+  components, commands, and services. Generated projects should start with `src/platforms/desktop.rs`,
+  `src/platforms/mobile.rs`, and `src/platforms/web.rs` so target logic has a stable home from day one.
+
+WebView target rules:
+
+- CEF-backed webview apps are desktop-only native apps.
+- WebView apps must not target native Android/iOS runtimes.
+- The same web UI can target the browser as a web build by bypassing the CEF runtime and using web
+  service adapters instead of native bridge commands.
+- Desktop-only webview logic must be behind target/capability checks and must have a web fallback,
+  disabled state, or explicit unsupported error.
 
 ---
 
@@ -289,6 +375,9 @@ stuk/
 │   ├── stuk-platform-wayland/
 │   ├── stuk-platform-windows/
 │   ├── stuk-platform-macos/
+│   ├── stuk-platform-android/
+│   ├── stuk-platform-ios/
+│   ├── stuk-platform-web/
 │   ├── stuk-accessibility/
 │   ├── stuk-actions/
 │   ├── stuk-settings/
@@ -652,6 +741,23 @@ Tasks should be cancellable when the owning window/component dies.
 
 Stuk layout should feel like the good parts of web layout without CSS selector/cascade nonsense.
 
+Responsive layout is first-class. View code can read the current viewport from `Cx` and resolve
+typed `Responsive<T>` values against standard breakpoints:
+
+```rust
+let columns = cx.responsive(&Responsive::new(1).medium(2).expanded(3));
+let show_sidebar = cx.is_at_least(Breakpoint::Medium);
+```
+
+Breakpoints are semantic, not platform names:
+
+- `Compact`: phone/narrow windows
+- `Medium`: large phone, small tablet, narrow desktop
+- `Expanded`: tablet/normal desktop
+- `Wide`: large desktop or external displays
+
+The same responsive API must work on desktop, mobile, and web targets.
+
 Required primitives:
 
 ```txt
@@ -952,7 +1058,13 @@ On Linux/Wayland:
 - bind `ext_background_effect_manager_v1` from the active `wl_display` registry and request `ext_background_effect_surface_v1` on the window `wl_surface`.
 - keep the effect object alive for the lifetime of the native window.
 - listen for the manager `capabilities` event and only enable blur when the compositor advertises the `blur` capability.
-- create an `ext_background_effect_surface_v1`, set a full-surface `wl_region` through `set_blur_region`, and apply it with `wl_surface.commit`.
+- create an `ext_background_effect_surface_v1`, set a `wl_region` through `set_blur_region`,
+  and apply it with `wl_surface.commit`.
+- support adaptive `wl_region` declarations for full-window blur, rounded window input regions,
+  rounded sidebar blur regions, opaque regions, and explicit fixed rect lists. Adaptive regions
+  must be recalculated after window resize so compositor blur/input masks keep matching the UI.
+- use `wl_surface.set_input_region` for shaped click regions and `wl_surface.set_opaque_region`
+  when a surface area is known to be opaque.
 - otherwise fall back to opaque/tinted surfaces.
 - expose `PlatformCapabilities::live_blur` and `PlatformCapabilities::transparent_windows` so apps can gate transparent surfaces behind the effect actually working.
 
@@ -1415,6 +1527,15 @@ preferred_mode = "browser"
 preferred_material = "maris"
 preferred_chrome = "compact"
 
+[targets]
+desktop = true
+linux = true
+windows = true
+macos = true
+android = false
+ios = false
+web = false
+
 [permissions]
 network = false
 filesystem = "documents"
@@ -1450,6 +1571,7 @@ default = "system"
 - settings schema valid
 - permissions valid
 - unsupported platform features
+- unsupported target/runtime combinations
 
 App IDs should use reverse DNS:
 
@@ -1478,6 +1600,20 @@ pub trait Platform {
     fn write_clipboard(&self, data: ClipboardData);
     fn open_file_dialog(&self, options: FileDialogOptions) -> FileDialogResult;
     fn platform_capabilities(&self) -> PlatformCapabilities;
+    fn backend(&self) -> BackendDescriptor;
+}
+```
+
+Backend descriptors:
+
+```rust
+pub struct BackendDescriptor {
+    pub name: String,
+    pub kind: BackendKind,
+    pub target: RuntimeTarget,
+    pub status: BackendStatus,
+    pub capabilities: PlatformCapabilities,
+    pub limitations: Vec<String>,
 }
 ```
 
@@ -1485,9 +1621,17 @@ Capabilities:
 
 ```rust
 pub struct PlatformCapabilities {
+    pub native_windows: bool,
+    pub web_surface: bool,
+    pub mobile_shell: bool,
+    pub native_bridge: bool,
     pub live_blur: bool,
     pub transparent_windows: bool,
     pub wallpaper_material: bool,
+    pub touch_input: bool,
+    pub pointer_input: bool,
+    pub keyboard_input: bool,
+    pub file_dialogs: bool,
     pub shell_tabs: bool,
     pub command_palette: bool,
     pub workspace_sessions: bool,
@@ -1564,6 +1708,23 @@ preferred_mode = "browser"
 preferred_material = "maris"
 preferred_chrome = "compact"
 ```
+
+Target declarations:
+
+```toml
+[targets]
+desktop = true
+linux = true
+windows = true
+macos = true
+android = false
+ios = false
+web = true
+```
+
+`desktop = true` means the app is intended to run on the generic desktop app shell. Platform-specific
+flags narrow or expand generated bundles. Webview apps may set `web = true` for a browser build, but
+must keep `android` and `ios` false unless they also provide native Stuk mobile UI entries.
 
 ---
 
@@ -1960,6 +2121,9 @@ stuk build --target staccato
 stuk build --target linux
 stuk build --target windows
 stuk build --target macos
+stuk build --target android
+stuk build --target ios
+stuk build --target web
 ```
 
 `stuk bundle`:
@@ -1970,6 +2134,9 @@ stuk bundle --target flatpak
 stuk bundle --target appimage
 stuk bundle --target windows
 stuk bundle --target macos
+stuk bundle --target android
+stuk bundle --target ios
+stuk bundle --target web
 ```
 
 Staccato bundle should include:
@@ -2547,6 +2714,8 @@ CEF windows used by Stuk must:
 - support transparent painting only on backends that can actually composite it correctly.
 - expose resize and focus through the Stuk window lifecycle.
 - expose Stuk-owned drag regions and window-control actions when Stuk chrome is requested.
+- expose bridge command declarations to the host and cancel bridge navigation before the page leaves
+  the app surface.
 - keep browser chrome hidden.
 - never create their own visible top-level app titlebar.
 
@@ -2555,14 +2724,16 @@ WebView transparency maps to the same material pipeline as native Stuk windows:
 ```rust
 WebViewWindow::new()
     .entry("ui/dist/index.html")
-    .material(Material::Surface)
-    .transparent(true)
+    .glass()
+    .blur_region(WindowRegion::adaptive_rounded_left(248, 16))
     .chrome(WindowChrome::Stuk)
 ```
 
 When transparency is requested:
 
 - Linux/Wayland should use the same background effect capability path as native Stuk windows when the backend supports transparent composition.
+- CEF hosts must set transparent browser backgrounds and should inject a transparent document root
+  default so `html`/`body` do not accidentally force an opaque page.
 - Windows should use Acrylic by default, with Mica/Mica Alt override support.
 - macOS should use vibrancy through the native window material layer.
 - the web content background must be allowed to be transparent.
@@ -2636,7 +2807,10 @@ klarkey/
 │   ├── main.rs
 │   ├── commands.rs
 │   ├── state.rs
-│   └── platform.rs
+│   ├── services/
+│   └── platforms/
+│       ├── desktop.rs
+│       └── web.rs
 ├── ui/
 │   ├── package.json
 │   ├── src/
@@ -2652,6 +2826,10 @@ Web UI lives in `ui/`.
 
 Native commands live in `src/commands.rs`.
 
+Privileged Rust services live behind command handlers or service traits in `src/services/`.
+
+Target-specific desktop/web behavior lives in `src/platforms/`.
+
 The webview must never get broad native access by default.
 
 Generated `AGENTS.md` for webview apps should include:
@@ -2662,9 +2840,12 @@ Generated `AGENTS.md` for webview apps should include:
 - Rust backend logic lives in `src/`.
 - Web UI lives in `ui/src/`.
 - Native commands live in `src/commands.rs`.
+- Privileged services live in `src/services/`.
+- Platform-specific behavior lives in `src/platforms/`.
 - Do not expose broad filesystem, shell, network, or credential APIs to the webview unless explicitly declared in `Stuk.toml`.
 - Prefer typed Stuk commands over ad-hoc IPC.
 - Keep privileged native APIs allowlisted.
+- Desktop-only commands need a browser/web fallback or an explicit unsupported state.
 - Run `stuk validate` after changes.
 ```
 
@@ -2717,6 +2898,48 @@ The bridge must be:
 - serializable
 - debuggable
 - safe by default
+- target-aware
+- generated into TypeScript bindings where possible
+- available to desktop webviews through Stuk IPC
+- replaceable by web adapters when the same UI is compiled for the browser
+
+Current implementation checkpoint:
+
+- `BridgeRegistry` declares allowlisted commands and can generate a minimal JavaScript facade.
+- The Linux CEF host receives declared command names, installs `window.stuk.bridge`, cancels
+  `stuk://bridge/...` navigation, and forwards bridge calls to Rust over a per-host IPC channel.
+- `WebViewWindow::bridge_handler`, `bridge_handler_async`, and descriptor-aware variants let apps
+  register Rust command handlers without writing runtime install, process, or CEF IPC code.
+- Bridge descriptors support permissions, allowed origins, target metadata, params schema, and
+  generated capability JSON.
+- Runtime bridge dispatch enforces descriptor permissions, target availability, and origin policy
+  before calling Rust handlers.
+- Remaining production hardening: typed TypeScript binding generation, manifest-to-runtime command
+  permission wiring, devtools tracing, event streaming, and the off-screen CEF compositor path for
+  fully Stuk-owned transparent Wayland hybrid webviews.
+
+Bridge commands are the only default way for web UI to touch native Rust capabilities. Web code must
+not get raw filesystem, process, credential, shell, or arbitrary OS access. A command may declare
+target availability:
+
+```rust
+#[stuk::command(targets = ["desktop"], permission = "filesystem")]
+async fn reveal_file(path: DocumentPath, services: Services) -> Result<()> {
+    services.files.reveal(path).await
+}
+```
+
+Generated web bindings should make unavailable commands explicit:
+
+```ts
+if (capabilities.commands.includes("reveal_file")) {
+  await commands.revealFile({ path });
+}
+```
+
+For browser builds of a webview app, `@stuk/web` resolves to a browser adapter. It can call HTTP,
+WASM, local browser storage, or no-op/unsupported implementations, but it must not pretend native
+desktop capabilities exist.
 
 ### WebView Security
 
@@ -3037,6 +3260,26 @@ Stuk WebView exists because:
 - Many real apps still benefit from web UI velocity.
 - Rust backend + CEF frontend + Stuk integration is a practical bridge.
 - A shared runtime gives smaller apps and centralized security updates.
+
+### Schelf-Class Migration Target
+
+A Tauri app like Schelf should be able to move to Stuk without rewriting its web UI first:
+
+- keep the existing Vite/web UI as the CEF webview frontend.
+- replace `@tauri-apps/api/core.invoke` with `window.stuk.bridge.invoke` or generated
+  `@stuk/web` bindings.
+- declare Linux package-management commands as bridge descriptors with explicit permissions such
+  as `filesystem`, `package-manager`, `process`, `network`, and `clipboard`.
+- keep desktop-only package operations unavailable in browser/mobile targets unless a web adapter
+  provides a real fallback.
+- use `WebViewWindow::glass()` plus adaptive Wayland regions for rounded window input masks and
+  sidebar-only blur.
+- let Stuk own runtime install, window chrome, drag regions, window controls, transparent CEF
+  backgrounds, and bridge security policy.
+
+The migration is complete when Schelf can run on Linux Wayland through Stuk WebView with the same
+native package-management backend semantics, no Tauri/WebKitGTK dependency, reusable shared CEF
+runtime resolution, and no app-local Wayland blur/input-region code.
 
 Stuk Native remains the long-term fully native path.
 

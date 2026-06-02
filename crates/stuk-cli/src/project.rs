@@ -12,7 +12,8 @@ use std::os::unix::process::CommandExt;
 
 use crate::templates::{
     ProjectContext, Template, actions_rs, agents_md, app_rs, cargo_toml, main_rs, main_window_rs,
-    settings_rs, state_rs, stuk_toml,
+    platforms_desktop_rs, platforms_mobile_rs, platforms_mod_rs, platforms_web_rs, settings_rs,
+    state_rs, stuk_toml,
 };
 
 pub struct CreateProjectOptions {
@@ -47,6 +48,9 @@ pub fn create_project(options: CreateProjectOptions) -> Result<(), String> {
 
     fs::create_dir_all(project_dir.join("src/views")).map_err(write_error(&project_dir))?;
     fs::create_dir_all(project_dir.join("src/components")).map_err(write_error(&project_dir))?;
+    fs::create_dir_all(project_dir.join("src/domain")).map_err(write_error(&project_dir))?;
+    fs::create_dir_all(project_dir.join("src/platforms")).map_err(write_error(&project_dir))?;
+    fs::create_dir_all(project_dir.join("src/services")).map_err(write_error(&project_dir))?;
     fs::create_dir_all(project_dir.join("assets")).map_err(write_error(&project_dir))?;
 
     let context = ProjectContext {
@@ -64,6 +68,24 @@ pub fn create_project(options: CreateProjectOptions) -> Result<(), String> {
     write_file(&project_dir.join("src/settings.rs"), &settings_rs())?;
     write_file(&project_dir.join("src/state.rs"), &state_rs())?;
     write_file(&project_dir.join("src/actions.rs"), &actions_rs())?;
+    write_file(&project_dir.join("src/domain/mod.rs"), "")?;
+    write_file(
+        &project_dir.join("src/platforms/mod.rs"),
+        &platforms_mod_rs(),
+    )?;
+    write_file(
+        &project_dir.join("src/platforms/desktop.rs"),
+        &platforms_desktop_rs(),
+    )?;
+    write_file(
+        &project_dir.join("src/platforms/mobile.rs"),
+        &platforms_mobile_rs(),
+    )?;
+    write_file(
+        &project_dir.join("src/platforms/web.rs"),
+        &platforms_web_rs(),
+    )?;
+    write_file(&project_dir.join("src/services/mod.rs"), "")?;
     write_file(
         &project_dir.join("src/views/mod.rs"),
         "pub mod main_window;\n",

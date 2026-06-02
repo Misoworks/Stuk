@@ -11,6 +11,9 @@ pub enum BundleTarget {
     AppImage,
     Windows,
     Macos,
+    Android,
+    Ios,
+    Web,
 }
 
 impl BundleTarget {
@@ -21,6 +24,9 @@ impl BundleTarget {
             "appimage" => Some(Self::AppImage),
             "windows" => Some(Self::Windows),
             "macos" => Some(Self::Macos),
+            "android" => Some(Self::Android),
+            "ios" => Some(Self::Ios),
+            "web" => Some(Self::Web),
             _ => None,
         }
     }
@@ -32,6 +38,9 @@ impl BundleTarget {
             Self::AppImage => "appimage",
             Self::Windows => "windows",
             Self::Macos => "macos",
+            Self::Android => "android",
+            Self::Ios => "ios",
+            Self::Web => "web",
         }
     }
 }
@@ -216,6 +225,12 @@ fn bundle_includes(target: BundleTarget, inspection: &ManifestInspection) -> Vec
     }
     if target == BundleTarget::Staccato {
         includes.push("Staccato integration metadata".to_string());
+    }
+    if matches!(target, BundleTarget::Android | BundleTarget::Ios) {
+        includes.push("mobile manifest metadata".to_string());
+    }
+    if target == BundleTarget::Web {
+        includes.push("web assets".to_string());
     }
     includes
 }

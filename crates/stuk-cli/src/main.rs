@@ -355,9 +355,7 @@ fn preview_descriptor_json(preview: &PreviewDescriptor) -> String {
 
 fn bundle_manifest(target: String, json: bool, manifest: PathBuf) -> Result<ExitCode, String> {
     let Some(target) = BundleTarget::parse(&target) else {
-        return Err(
-            "unknown bundle target; use staccato, flatpak, appimage, windows, or macos".to_string(),
-        );
+        return Err("unknown bundle target; use staccato, flatpak, appimage, windows, macos, android, ios, or web".to_string());
     };
     let manifest_data = match parse_file(&manifest) {
         Ok(manifest_data) => manifest_data,

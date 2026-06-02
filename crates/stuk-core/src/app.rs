@@ -1,7 +1,11 @@
 use std::{cell::RefCell, future::Future, rc::Rc, sync::Arc};
 
 use stuk_actions::{ActionDescriptor, ActionRegistry, ActionRegistryError};
-use stuk_platform::{NativeApp, PlatformError, StaccatoSession, WindowOptions};
+use stuk_layout::{Breakpoint, Responsive, Size};
+use stuk_platform::{
+    AppTarget, BackendDescriptor, NativeApp, PlatformCapabilities, PlatformError, RuntimeTarget,
+    StaccatoSession, WindowOptions,
+};
 use stuk_settings::{SettingKind, SettingValue, SettingsSchema, SettingsStore, SettingsStoreError};
 use stuk_style::Theme;
 use thiserror::Error;
@@ -33,6 +37,8 @@ pub enum StukError {
 pub struct Cx {
     app_id: String,
     app_name: String,
+    backend: BackendDescriptor,
+    viewport_size: Size,
     settings_schema: Rc<SettingsSchema>,
     settings_store: Rc<RefCell<SettingsStore>>,
     staccato_session: Rc<RefCell<StaccatoSession>>,
@@ -67,13 +73,37 @@ impl Cx {
         settings_store: Rc<RefCell<SettingsStore>>,
         staccato_session: Rc<RefCell<StaccatoSession>>,
     ) -> Self {
+        Self::with_settings_and_session_and_backend(
+            app_id,
+            app_name,
+            settings_schema,
+            settings_store,
+            staccato_session,
+            BackendDescriptor::current_native(),
+        )
+    }
+
+    pub(crate) fn with_settings_and_session_and_backend(
+        app_id: &str,
+        app_name: &str,
+        settings_schema: Rc<SettingsSchema>,
+        settings_store: Rc<RefCell<SettingsStore>>,
+        staccato_session: Rc<RefCell<StaccatoSession>>,
+        backend: BackendDescriptor,
+    ) -> Self {
         Self {
             app_id: app_id.to_string(),
             app_name: app_name.to_string(),
+            backend,
+            viewport_size: Size::default(),
             settings_schema,
             settings_store,
             staccato_session,
         }
+    }
+
+    pub(crate) fn set_viewport_size(&mut self, size: Size) {
+        self.viewport_size = size;
     }
 
     pub fn app_id(&self) -> &str {
@@ -82,6 +112,58 @@ impl Cx {
 
     pub fn app_name(&self) -> &str {
         &self.app_name
+    }
+
+    pub fn viewport_size(&self) -> Size {
+        self.viewport_size
+    }
+
+    pub fn platform_backend(&self) -> &BackendDescriptor {
+        &self.backend
+    }
+
+    pub fn platform_target(&self) -> RuntimeTarget {
+        self.backend.target
+    }
+
+    pub fn capabilities(&self) -> PlatformCapabilities {
+        self.backend.capabilities
+    }
+
+    pub fn is_desktop(&self) -> bool {
+        self.backend.target.is_desktop()
+    }
+
+    pub fn is_mobile(&self) -> bool {
+        self.backend.target.is_mobile()
+    }
+
+    pub fn is_web(&self) -> bool {
+        self.backend.target.is_web()
+    }
+
+    pub fn app_target(&self) -> Option<AppTarget> {
+        AppTarget::from_runtime_target(self.backend.target)
+    }
+
+    pub fn matches_target(&self, target: AppTarget) -> bool {
+        target.matches(self.backend.target)
+    }
+
+    pub fn viewport_width(&self) -> f32 {
+        self.viewport_size.width
+    }
+
+    pub fn breakpoint(&self) -> Breakpoint {
+        Breakpoint::from_size(self.viewport_size)
+    }
+
+    pub fn is_at_least(&self, breakpoint: Breakpoint) -> bool {
+        self.breakpoint().is_at_least(breakpoint)
+    }
+
+    pub fn responsive<T: Clone>(&self, value: &Responsive<T>) -> T {
+        value.resolve(self.breakpoint())
     }
 
     pub fn settings_schema(&self) -> &SettingsSchema {
@@ -236,6 +318,7 @@ pub struct App<V> {
     id: Option<String>,
     name: Option<String>,
     window: Option<V>,
+    backend: Option<BackendDescriptor>,
     action_handler: Option<Arc<dyn Fn(&str)>>,
     settings_schema: Option<SettingsSchema>,
 }
@@ -246,6 +329,7 @@ impl App<()> {
             id: None,
             name: None,
             window: None,
+            backend: None,
             action_handler: None,
             settings_schema: None,
         }
@@ -274,9 +358,15 @@ impl<V> App<V> {
             id: self.id,
             name: self.name,
             window: Some(window),
+            backend: self.backend,
             action_handler: self.action_handler,
             settings_schema: self.settings_schema,
         }
+    }
+
+    pub fn backend(mut self, backend: BackendDescriptor) -> Self {
+        self.backend = Some(backend);
+        self
     }
 
     pub fn settings(mut self, schema: SettingsSchema) -> Self {
@@ -302,6 +392,7 @@ where
             id,
             name,
             window,
+            backend,
             action_handler,
             settings_schema,
         } = self;
@@ -318,24 +409,27 @@ where
             settings_schema.as_ref(),
         )));
         let staccato_session = Rc::new(RefCell::new(StaccatoSession::default()));
+        let backend = backend.unwrap_or_else(BackendDescriptor::current_native);
         let initial = {
             let root = root.borrow();
-            let mut cx = Cx::with_settings_and_session(
+            let mut cx = Cx::with_settings_and_session_and_backend(
                 &app_id,
                 &app_name,
                 Rc::clone(&settings_schema),
                 Rc::clone(&settings_store),
                 Rc::clone(&staccato_session),
+                backend.clone(),
             );
             build_window(&*root, &mut cx)
         };
         let action_registry = {
-            let mut cx = Cx::with_settings_and_session(
+            let mut cx = Cx::with_settings_and_session_and_backend(
                 &app_id,
                 &app_name,
                 Rc::clone(&settings_schema),
                 Rc::clone(&settings_store),
                 Rc::clone(&staccato_session),
+                backend.clone(),
             );
             let root = root.borrow();
             ActionRegistry::from_actions(root.actions(&mut cx))?
@@ -362,6 +456,8 @@ where
         let session_for_render = Rc::clone(&staccato_session);
         let session_for_actions = Rc::clone(&staccato_session);
         let action_registry = Rc::new(action_registry);
+        let backend_for_render = backend.clone();
+        let backend_for_actions = backend.clone();
 
         NativeApp::new(
             WindowOptions {
@@ -375,21 +471,25 @@ where
                 always_on_top: initial.always_on_top,
                 transparent: initial.transparent,
                 background_effect: initial.background_effect,
+                regions: initial.regions,
                 ..WindowOptions::default()
             },
             move |size, hovered, pressed, focused| {
                 let root = root_for_render.borrow();
-                let mut cx = Cx::with_settings_and_session(
+                let mut cx = Cx::with_settings_and_session_and_backend(
                     &app_id_for_render,
                     &app_name_for_render,
                     Rc::clone(&schema_for_render),
                     Rc::clone(&store_for_render),
                     Rc::clone(&session_for_render),
+                    backend_for_render.clone(),
                 );
+                cx.set_viewport_size(size);
                 let window = build_window(&*root, &mut cx);
                 render_window(&window, size, hovered, pressed, focused)
             },
         )
+        .backend(backend)
         .shortcuts(shortcuts)
         .on_action(Arc::new(move |action_id| {
             if matches!(
@@ -410,12 +510,13 @@ where
                 handler(action_id);
             }
 
-            let mut cx = Cx::with_settings_and_session(
+            let mut cx = Cx::with_settings_and_session_and_backend(
                 &app_id_for_actions,
                 &app_name_for_actions,
                 Rc::clone(&schema_for_actions),
                 Rc::clone(&store_for_actions),
                 Rc::clone(&session_for_actions),
+                backend_for_actions.clone(),
             );
             cx.apply_setting_action(action_id, "settings");
             root_for_actions
@@ -478,5 +579,25 @@ mod tests {
             session.preferred_split,
             Some(stuk_platform::SplitHint::Right)
         );
+    }
+
+    #[test]
+    fn exposes_platform_backend_and_capabilities_to_views() {
+        let schema = Rc::new(SettingsSchema::new());
+        let store = Rc::new(RefCell::new(SettingsStore::new()));
+        let backend = BackendDescriptor::browser_web();
+        let cx = Cx::with_settings_and_session_and_backend(
+            "dev.stuk.test",
+            "Test",
+            schema,
+            store,
+            Rc::new(RefCell::new(StaccatoSession::default())),
+            backend,
+        );
+
+        assert!(cx.is_web());
+        assert!(!cx.is_desktop());
+        assert!(cx.capabilities().web_surface);
+        assert_eq!(cx.platform_backend().name, "web");
     }
 }

@@ -2113,9 +2113,12 @@ dependencies = [
  "stuk-layout",
  "stuk-manifest",
  "stuk-platform",
+ "stuk-platform-android",
+ "stuk-platform-ios",
  "stuk-platform-macos",
  "stuk-platform-staccato",
  "stuk-platform-wayland",
+ "stuk-platform-web",
  "stuk-platform-windows",
  "stuk-render",
  "stuk-settings",
@@ -2223,6 +2226,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "stuk-platform-android"
+version = "0.1.0"
+dependencies = [
+ "stuk-actions",
+ "stuk-platform",
+ "stuk-style",
+]
+
+[[package]]
+name = "stuk-platform-ios"
+version = "0.1.0"
+dependencies = [
+ "stuk-actions",
+ "stuk-platform",
+ "stuk-style",
+]
+
+[[package]]
 name = "stuk-platform-macos"
 version = "0.1.0"
 dependencies = [
@@ -2242,6 +2263,15 @@ dependencies = [
 
 [[package]]
 name = "stuk-platform-wayland"
+version = "0.1.0"
+dependencies = [
+ "stuk-actions",
+ "stuk-platform",
+ "stuk-style",
+]
+
+[[package]]
+name = "stuk-platform-web"
 version = "0.1.0"
 dependencies = [
  "stuk-actions",
@@ -2317,6 +2347,7 @@ dependencies = [
 name = "stuk-webview"
 version = "0.1.0"
 dependencies = [
+ "pollster",
  "raw-window-handle",
  "serde_json",
  "stuk",
@@ -2839,6 +2870,7 @@ dependencies = [
 name = "web-runtime"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "stuk",
  "stuk-web-runtime",
  "stuk-webview",

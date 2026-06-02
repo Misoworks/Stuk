@@ -1,3 +1,4 @@
+mod backend;
 mod integration;
 mod material;
 mod session;
@@ -26,6 +27,11 @@ use winit::{
     window::{Window, WindowAttributes, WindowId as WinitWindowId, WindowLevel},
 };
 
+pub use backend::{
+    AppTarget, BackendDescriptor, BackendKind, BackendStatus, PlatformFamily, PlatformOs,
+    PlatformOverride, PlatformOverrideKind, PlatformOverrideRegistry, RuntimeTarget, TargetSet,
+    current_desktop_os, current_native_backend,
+};
 pub use integration::{
     FileDialogFilter, FileDialogMode, FileDialogOptions, FileDialogResult, GenericPlatform,
     Platform, WindowHandle, WindowId,
@@ -77,15 +83,32 @@ impl ClipboardData {
 }
 
 pub fn read_clipboard_text() -> Option<String> {
-    arboard::Clipboard::new()
-        .and_then(|mut clipboard| clipboard.get_text())
-        .ok()
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.get_text())
+            .ok()
+    }
 }
 
 pub fn write_clipboard_text(text: &str) -> bool {
-    arboard::Clipboard::new()
-        .and_then(|mut clipboard| clipboard.set_text(text.to_string()))
-        .is_ok()
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = text;
+        false
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(text.to_string()))
+            .is_ok()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -176,9 +199,17 @@ impl WindowBackgroundEffect {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PlatformCapabilities {
+    pub native_windows: bool,
+    pub web_surface: bool,
+    pub mobile_shell: bool,
+    pub native_bridge: bool,
     pub live_blur: bool,
     pub transparent_windows: bool,
     pub wallpaper_material: bool,
+    pub touch_input: bool,
+    pub pointer_input: bool,
+    pub keyboard_input: bool,
+    pub file_dialogs: bool,
     pub shell_tabs: bool,
     pub command_palette: bool,
     pub workspace_sessions: bool,
@@ -190,15 +221,177 @@ pub struct PlatformCapabilities {
 impl PlatformCapabilities {
     pub fn generic() -> Self {
         Self {
+            native_windows: false,
+            web_surface: false,
+            mobile_shell: false,
+            native_bridge: false,
             live_blur: false,
             transparent_windows: false,
             wallpaper_material: false,
+            touch_input: false,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: false,
             shell_tabs: false,
             command_palette: false,
             workspace_sessions: false,
             native_notifications: false,
             system_dark_mode: true,
             high_contrast: false,
+        }
+    }
+
+    pub fn desktop_linux(live_blur: bool, transparent_windows: bool) -> Self {
+        Self {
+            native_windows: true,
+            web_surface: false,
+            mobile_shell: false,
+            native_bridge: true,
+            live_blur,
+            transparent_windows,
+            wallpaper_material: false,
+            touch_input: false,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: true,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: true,
+            system_dark_mode: true,
+            high_contrast: true,
+        }
+    }
+
+    pub fn desktop_windows(backdrop: bool) -> Self {
+        Self {
+            native_windows: true,
+            web_surface: false,
+            mobile_shell: false,
+            native_bridge: true,
+            live_blur: backdrop,
+            transparent_windows: backdrop,
+            wallpaper_material: false,
+            touch_input: false,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: true,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: true,
+            system_dark_mode: true,
+            high_contrast: true,
+        }
+    }
+
+    pub fn desktop_macos(vibrancy: bool) -> Self {
+        Self {
+            native_windows: true,
+            web_surface: false,
+            mobile_shell: false,
+            native_bridge: true,
+            live_blur: vibrancy,
+            transparent_windows: vibrancy,
+            wallpaper_material: vibrancy,
+            touch_input: false,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: true,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: true,
+            system_dark_mode: true,
+            high_contrast: true,
+        }
+    }
+
+    pub fn mobile_android() -> Self {
+        Self {
+            native_windows: false,
+            web_surface: false,
+            mobile_shell: true,
+            native_bridge: true,
+            live_blur: false,
+            transparent_windows: false,
+            wallpaper_material: false,
+            touch_input: true,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: false,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: true,
+            system_dark_mode: true,
+            high_contrast: true,
+        }
+    }
+
+    pub fn mobile_ios() -> Self {
+        Self {
+            native_windows: false,
+            web_surface: false,
+            mobile_shell: true,
+            native_bridge: true,
+            live_blur: true,
+            transparent_windows: false,
+            wallpaper_material: true,
+            touch_input: true,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: false,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: true,
+            system_dark_mode: true,
+            high_contrast: true,
+        }
+    }
+
+    pub fn browser_web() -> Self {
+        Self {
+            native_windows: false,
+            web_surface: true,
+            mobile_shell: false,
+            native_bridge: false,
+            live_blur: false,
+            transparent_windows: false,
+            wallpaper_material: false,
+            touch_input: true,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: true,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: false,
+            system_dark_mode: true,
+            high_contrast: true,
+        }
+    }
+
+    pub fn cef_webview() -> Self {
+        Self {
+            native_windows: true,
+            web_surface: true,
+            mobile_shell: false,
+            native_bridge: true,
+            live_blur: true,
+            transparent_windows: true,
+            wallpaper_material: false,
+            touch_input: false,
+            pointer_input: true,
+            keyboard_input: true,
+            file_dialogs: true,
+            shell_tabs: false,
+            command_palette: false,
+            workspace_sessions: false,
+            native_notifications: true,
+            system_dark_mode: true,
+            high_contrast: true,
         }
     }
 
@@ -255,6 +448,198 @@ impl From<DisplayList> for NativeFrame {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowRegionRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl WindowRegionRect {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
+        Self {
+            x,
+            y,
+            width: width.max(0),
+            height: height.max(0),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.width <= 0 || self.height <= 0
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WindowRegion {
+    pub rects: Vec<WindowRegionRect>,
+    pub adaptive: Option<WindowRegionAdaptive>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WindowRegionAdaptive {
+    Full,
+    RoundedRect { radius: i32 },
+    RoundedLeft { width: i32, radius: i32 },
+}
+
+impl WindowRegion {
+    pub fn empty() -> Self {
+        Self {
+            rects: Vec::new(),
+            adaptive: None,
+        }
+    }
+
+    pub fn rect(x: i32, y: i32, width: i32, height: i32) -> Self {
+        Self::empty().add_rect(x, y, width, height)
+    }
+
+    pub fn full(width: i32, height: i32) -> Self {
+        Self::rect(0, 0, width, height)
+    }
+
+    pub fn adaptive_full() -> Self {
+        Self {
+            rects: Vec::new(),
+            adaptive: Some(WindowRegionAdaptive::Full),
+        }
+    }
+
+    pub fn rounded_rect(width: i32, height: i32, radius: i32) -> Self {
+        let mut region = Self::empty();
+        let radius = radius.min(width / 2).min(height / 2).max(0);
+        if radius == 0 {
+            return Self::full(width, height);
+        }
+
+        for y in 0..height.max(0) {
+            let inset = rounded_region_row_inset(y, height, radius);
+            region = region.add_rect(inset, y, width - inset * 2, 1);
+        }
+        region
+    }
+
+    pub fn adaptive_rounded_rect(radius: i32) -> Self {
+        Self {
+            rects: Vec::new(),
+            adaptive: Some(WindowRegionAdaptive::RoundedRect { radius }),
+        }
+    }
+
+    pub fn rounded_left(width: i32, height: i32, radius: i32) -> Self {
+        let mut region = Self::empty();
+        let radius = radius.min(width).min(height / 2).max(0);
+        if radius == 0 {
+            return Self::full(width, height);
+        }
+
+        for y in 0..height.max(0) {
+            let inset = rounded_region_row_inset(y, height, radius);
+            region = region.add_rect(inset, y, width - inset, 1);
+        }
+        region
+    }
+
+    pub fn adaptive_rounded_left(width: i32, radius: i32) -> Self {
+        Self {
+            rects: Vec::new(),
+            adaptive: Some(WindowRegionAdaptive::RoundedLeft { width, radius }),
+        }
+    }
+
+    pub fn add_rect(mut self, x: i32, y: i32, width: i32, height: i32) -> Self {
+        let rect = WindowRegionRect::new(x, y, width, height);
+        if !rect.is_empty() {
+            self.rects.push(rect);
+        }
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rects.is_empty() && self.adaptive.is_none()
+    }
+
+    pub fn resolved_rects(&self, width: i32, height: i32) -> Vec<WindowRegionRect> {
+        match self.adaptive {
+            Some(WindowRegionAdaptive::Full) => WindowRegion::full(width, height).rects,
+            Some(WindowRegionAdaptive::RoundedRect { radius }) => {
+                WindowRegion::rounded_rect(width, height, radius).rects
+            }
+            Some(WindowRegionAdaptive::RoundedLeft {
+                width: sidebar_width,
+                radius,
+            }) => WindowRegion::rounded_left(sidebar_width, height, radius).rects,
+            None => self.rects.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WindowRegions {
+    pub blur: Option<WindowRegion>,
+    pub opaque: Option<WindowRegion>,
+    pub input: Option<WindowRegion>,
+}
+
+impl WindowRegions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn blur(mut self, region: WindowRegion) -> Self {
+        self.blur = Some(region);
+        self
+    }
+
+    pub fn opaque(mut self, region: WindowRegion) -> Self {
+        self.opaque = Some(region);
+        self
+    }
+
+    pub fn input(mut self, region: WindowRegion) -> Self {
+        self.input = Some(region);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.blur.as_ref().is_none_or(WindowRegion::is_empty)
+            && self.opaque.as_ref().is_none_or(WindowRegion::is_empty)
+            && self.input.as_ref().is_none_or(WindowRegion::is_empty)
+    }
+
+    pub fn rounded_window(width: i32, height: i32, radius: i32) -> Self {
+        let region = WindowRegion::rounded_rect(width, height, radius);
+        Self::new().input(region)
+    }
+
+    pub fn adaptive_rounded_window(radius: i32) -> Self {
+        Self::new().input(WindowRegion::adaptive_rounded_rect(radius))
+    }
+
+    pub fn rounded_sidebar(sidebar_width: i32, height: i32, radius: i32) -> Self {
+        Self::new().blur(WindowRegion::rounded_left(sidebar_width, height, radius))
+    }
+
+    pub fn adaptive_rounded_sidebar(sidebar_width: i32, radius: i32) -> Self {
+        Self::new().blur(WindowRegion::adaptive_rounded_left(sidebar_width, radius))
+    }
+}
+
+fn rounded_region_row_inset(y: i32, height: i32, radius: i32) -> i32 {
+    let top = y < radius;
+    let bottom = y >= height - radius;
+    if !top && !bottom {
+        return 0;
+    }
+
+    let center_y = if top { radius } else { height - radius - 1 };
+    let dy = (y - center_y).abs() as f64;
+    let radius = radius as f64;
+    (radius - (radius * radius - dy * dy).max(0.0).sqrt()).ceil() as i32
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WindowOptions {
     pub title: String,
     pub width: u32,
@@ -268,6 +653,7 @@ pub struct WindowOptions {
     pub always_on_top: bool,
     pub transparent: bool,
     pub background_effect: WindowBackgroundEffect,
+    pub regions: WindowRegions,
 }
 
 impl Default for WindowOptions {
@@ -285,6 +671,7 @@ impl Default for WindowOptions {
             always_on_top: false,
             transparent: false,
             background_effect: WindowBackgroundEffect::None,
+            regions: WindowRegions::default(),
         }
     }
 }
@@ -293,12 +680,16 @@ impl WindowOptions {
     pub fn resolved_for_capabilities(mut self, capabilities: PlatformCapabilities) -> Self {
         if !capabilities.supports_background_effect(self.background_effect) {
             self.background_effect = WindowBackgroundEffect::None;
+            self.regions.blur = None;
         }
         if self.transparent && !capabilities.transparent_windows {
             self.transparent = false;
         }
         if self.background_effect.requires_transparency() {
             self.transparent = self.transparent && capabilities.transparent_windows;
+        }
+        if !self.transparent {
+            self.regions.blur = None;
         }
         self
     }
@@ -318,6 +709,7 @@ pub struct NativeApp<F>
 where
     F: Fn(Size, Option<&str>, Option<&str>, Option<&str>) -> NativeFrame + 'static,
 {
+    backend: BackendDescriptor,
     options: WindowOptions,
     render: F,
     action_handler: Option<NativeActionHandler>,
@@ -332,13 +724,19 @@ where
 {
     pub fn new(options: WindowOptions, render: F) -> Self {
         Self {
-            options,
+            backend: BackendDescriptor::current_native(),
+            options: options.clone(),
             render,
             action_handler: None,
             scroll_handler: None,
             shortcuts: Vec::new(),
             state: None,
         }
+    }
+
+    pub fn backend(mut self, backend: BackendDescriptor) -> Self {
+        self.backend = backend;
+        self
     }
 
     pub fn shortcuts(mut self, shortcuts: Vec<(Shortcut, String)>) -> Self {
@@ -381,28 +779,34 @@ where
             return;
         }
 
-        let options = &self.app.options;
-        let attributes = WindowAttributes::default()
-            .with_title(options.title.clone())
-            .with_surface_size(LogicalSize::new(
-                f64::from(options.width),
-                f64::from(options.height),
-            ))
-            .with_min_surface_size(LogicalSize::new(
-                f64::from(options.min_width),
-                f64::from(options.min_height),
-            ))
-            .with_resizable(options.resizable)
-            .with_decorations(options.chrome.uses_native_decorations())
-            .with_visible(options.visible)
-            .with_active(options.active)
-            .with_window_level(if options.always_on_top {
-                WindowLevel::AlwaysOnTop
-            } else {
-                WindowLevel::Normal
-            })
-            .with_transparent(options.transparent)
-            .with_blur(options.background_effect.requires_transparency());
+        let options = self
+            .app
+            .options
+            .clone()
+            .resolved_for_capabilities(self.app.backend.capabilities);
+        let attributes = platform_window_attributes(
+            WindowAttributes::default()
+                .with_title(options.title.clone())
+                .with_surface_size(LogicalSize::new(
+                    f64::from(options.width),
+                    f64::from(options.height),
+                ))
+                .with_min_surface_size(LogicalSize::new(
+                    f64::from(options.min_width),
+                    f64::from(options.min_height),
+                ))
+                .with_resizable(options.resizable)
+                .with_decorations(options.chrome.uses_native_decorations())
+                .with_visible(options.visible)
+                .with_active(options.active)
+                .with_window_level(if options.always_on_top {
+                    WindowLevel::AlwaysOnTop
+                } else {
+                    WindowLevel::Normal
+                })
+                .with_transparent(options.transparent)
+                .with_blur(options.background_effect.requires_transparency()),
+        );
 
         let window = match event_loop.create_window(attributes) {
             Ok(window) => Arc::<dyn Window>::from(window),
@@ -420,12 +824,13 @@ where
                 return;
             }
         };
-        let _background_effect = wayland_background_effect::request(&window, options);
+        let _background_effect = wayland_background_effect::request(&window, &options);
 
         self.app.state = Some(NativeState {
             window,
             renderer,
             _background_effect,
+            options: options.clone(),
             chrome: options.chrome,
             last_frame: None,
             modifiers: ModifiersState::default(),
@@ -459,7 +864,7 @@ where
             state.window.request_redraw();
             state.caret_next_redraw = now + Duration::from_millis(CARET_BLINK_MS);
         }
-        event_loop.set_control_flow(ControlFlow::WaitUntil(state.caret_next_redraw));
+        set_control_flow_until(event_loop, state.caret_next_redraw);
     }
 
     fn window_event(
@@ -482,6 +887,7 @@ where
                 state
                     .renderer
                     .resize(size.width, size.height, state.window.scale_factor() as f32);
+                state.update_window_regions(size.width, size.height);
                 state.window.request_redraw();
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -489,6 +895,7 @@ where
                 state
                     .renderer
                     .resize(size.width, size.height, scale_factor as f32);
+                state.update_window_regions(size.width, size.height);
                 state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
@@ -559,7 +966,7 @@ where
                     apply_caret_blink(&mut frame.display_list, state.caret_started);
                     state.caret_next_redraw =
                         next_caret_redraw(state.caret_started, Instant::now());
-                    event_loop.set_control_flow(ControlFlow::WaitUntil(state.caret_next_redraw));
+                    set_control_flow_until(event_loop, state.caret_next_redraw);
                 }
                 if frame.continuous_redraw {
                     state.window.request_redraw();
@@ -759,10 +1166,43 @@ where
     }
 }
 
+fn set_control_flow_until(event_loop: &dyn ActiveEventLoop, deadline: Instant) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = deadline;
+        event_loop.set_control_flow(ControlFlow::Wait);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+    }
+}
+
+fn platform_window_attributes(attributes: WindowAttributes) -> WindowAttributes {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use winit::platform::web::WindowAttributesWeb;
+
+        attributes.with_platform_attributes(Box::new(
+            WindowAttributesWeb::default()
+                .with_append(true)
+                .with_prevent_default(true)
+                .with_focusable(true),
+        ))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        attributes
+    }
+}
+
 struct NativeState {
     window: Arc<dyn Window>,
     renderer: GpuRenderer,
     _background_effect: Option<wayland_background_effect::WaylandEffect>,
+    options: WindowOptions,
     chrome: WindowChrome,
     last_frame: Option<NativeFrame>,
     modifiers: ModifiersState,
@@ -779,6 +1219,20 @@ struct NativeState {
     cursor_icon: CursorIcon,
     text_drag: Option<String>,
     last_text_click: Option<TextClick>,
+}
+
+impl NativeState {
+    fn update_window_regions(&self, width: u32, height: u32) {
+        if let Some(effect) = &self._background_effect {
+            let logical_width = (width as f64 / self.window.scale_factor())
+                .round()
+                .clamp(1.0, f64::from(i32::MAX)) as i32;
+            let logical_height = (height as f64 / self.window.scale_factor())
+                .round()
+                .clamp(1.0, f64::from(i32::MAX)) as i32;
+            let _ = effect.update(&self.options, logical_width, logical_height);
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1228,8 +1682,13 @@ pub fn write_os_clipboard(text: &str) {
     {
         let _ = text;
     }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = text;
+    }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn try_write_clipboard(cmd: &str, args: &[&str], text: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut child = std::process::Command::new(cmd)

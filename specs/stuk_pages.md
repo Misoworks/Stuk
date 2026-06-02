@@ -136,6 +136,9 @@ src/
 ├── app.rs
 ├── state.rs
 ├── actions.rs
+├── domain/
+├── services/
+├── platforms/
 ├── views/
 └── components/
 ```
@@ -171,6 +174,9 @@ notes-app/
 │   ├── services/
 │   │   ├── storage.rs
 │   │   └── sync.rs
+│   ├── platforms/
+│   │   ├── desktop.rs
+│   │   └── web.rs
 │   └── permissions.rs
 ├── ui/
 │   ├── package.json
@@ -195,6 +201,8 @@ Rules:
 - Rust backend logic lives in `src/`.
 - Native commands live in `src/commands.rs`.
 - Privileged services live in `src/services/`.
+- Shared domain logic lives in `src/domain/`.
+- Platform-specific native/web/desktop/mobile overrides live in `src/platforms/`.
 - Web UI lives in `ui/src/`.
 - Web components live in `ui/src/components/`.
 - Web pages/screens live in `ui/src/views/`.
@@ -205,7 +213,30 @@ Rules:
   managed by Stuk so concurrent windows do not fight over CEF process-singleton state.
 - WebView apps using Stuk chrome should only provide the visible content structure for titlebars and
   controls; drag-region forwarding and native window commands are framework behavior.
+- WebView apps should declare glass/blur/input/opaque regions through Stuk window/webview
+  constructors. App code should not bind Wayland protocols or hand-roll native rounded input masks.
+- WebView bridge commands should use descriptors for permissions, targets, origins, and schemas.
 - The webview must not get broad native access by default.
+- CEF-backed webview apps target desktop native runtimes only. They may also produce a browser web
+  build by bypassing CEF and replacing native commands with web adapters.
+- Android/iOS targets require native Stuk UI entries, not the CEF runtime.
+- `Cx` exposes the resolved backend and capabilities so shared UI can ask for target state without
+  importing platform crates.
+- `stuk inspect` should show manifest targets and backend/capability inspection should show the
+  selected backend name, kind, OS, family, status, and limitations.
+
+Platform UI reuse is explicit:
+
+- Apps may share one responsive UI across all targets.
+- Apps may share only `domain/`, `state.rs`, and `services/` while placing UI shells in
+  `platforms/desktop.rs`, `platforms/mobile.rs`, and `platforms/web.rs`.
+- Apps may use shared views by default and override individual pages/components in `platforms/`.
+- Native app layout should start from framework primitives such as `AppShell`, `PageShell`, `Pane`,
+  `CommandBar`, and `ListSection` instead of hand-writing pane sizing, header alignment, and action
+  placement for every app.
+- Shared modules must not import platform-only crates directly.
+- Stuk validation should flag platform code leaking into shared modules once source inspection is
+  available.
 
 ---
 

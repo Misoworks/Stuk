@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+serde_json.workspace = true
 stuk.workspace = true
 stuk-web-runtime.workspace = true
 stuk-webview.workspace = true

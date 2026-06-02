@@ -1,3 +1,4 @@
+mod app_shell;
 mod async_view;
 mod chrome_widgets;
 mod command_palette;
@@ -14,6 +15,7 @@ mod surface_widget;
 mod text_widgets;
 mod virtual_list;
 
+pub use app_shell::{AppShell, CommandBar, ListSection, PageShell, Pane};
 pub use async_view::{MutationView, ResourceView};
 pub use chrome_widgets::{ResizablePane, Titlebar};
 pub use command_palette::CommandPalette;
@@ -41,7 +43,7 @@ use stuk_core::{
     WindowElement,
 };
 use stuk_layout::{Axis, EdgeInsets, Length};
-use stuk_platform::{WindowBackgroundEffect, WindowChrome};
+use stuk_platform::{WindowBackgroundEffect, WindowChrome, WindowRegion, WindowRegions};
 use stuk_style::{ButtonVariant, Color, Material, NumberSpacing, TextAlign, TextWrap};
 
 #[derive(Clone, Debug)]
@@ -92,6 +94,37 @@ impl Window {
         if effect.requires_transparency() {
             self.element.transparent = true;
         }
+        self
+    }
+
+    pub fn regions(mut self, regions: WindowRegions) -> Self {
+        self.element.regions = regions;
+        self
+    }
+
+    pub fn blur_region(mut self, region: WindowRegion) -> Self {
+        self.element.regions.blur = Some(region);
+        self
+    }
+
+    pub fn input_region(mut self, region: WindowRegion) -> Self {
+        self.element.regions.input = Some(region);
+        self
+    }
+
+    pub fn opaque_region(mut self, region: WindowRegion) -> Self {
+        self.element.regions.opaque = Some(region);
+        self
+    }
+
+    pub fn rounded_window_region(mut self, radius: i32) -> Self {
+        self.element.regions.input = Some(WindowRegion::adaptive_rounded_rect(radius));
+        self
+    }
+
+    pub fn sidebar_blur_region(mut self, sidebar_width: i32, radius: i32) -> Self {
+        self.element.regions.blur =
+            Some(WindowRegion::adaptive_rounded_left(sidebar_width, radius));
         self
     }
 

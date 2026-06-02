@@ -1,10 +1,23 @@
-use stuk_platform::{MaterialEffect, MaterialResolver, Platform, PlatformCapabilities};
+use stuk_platform::{
+    BackendDescriptor, MaterialEffect, MaterialResolver, Platform, PlatformCapabilities,
+};
 use stuk_style::{Color, Material, Theme};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlatformInspection {
+    pub backend: BackendInspection,
     pub capabilities: Vec<CapabilityInspection>,
     pub materials: Vec<MaterialInspection>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackendInspection {
+    pub name: String,
+    pub kind: String,
+    pub family: String,
+    pub os: String,
+    pub status: String,
+    pub limitations: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,6 +44,7 @@ where
     P: Platform + MaterialResolver,
 {
     PlatformInspection {
+        backend: inspect_backend(platform.backend()),
         capabilities: inspect_capabilities(platform.platform_capabilities()),
         materials: materials
             .into_iter()
@@ -39,11 +53,30 @@ where
     }
 }
 
+fn inspect_backend(backend: BackendDescriptor) -> BackendInspection {
+    BackendInspection {
+        name: backend.name,
+        kind: backend.kind.as_str().to_string(),
+        family: backend.target.family.as_str().to_string(),
+        os: backend.target.os.as_str().to_string(),
+        status: backend.status.as_str().to_string(),
+        limitations: backend.limitations,
+    }
+}
+
 fn inspect_capabilities(capabilities: PlatformCapabilities) -> Vec<CapabilityInspection> {
     vec![
+        capability("native_windows", capabilities.native_windows),
+        capability("web_surface", capabilities.web_surface),
+        capability("mobile_shell", capabilities.mobile_shell),
+        capability("native_bridge", capabilities.native_bridge),
         capability("live_blur", capabilities.live_blur),
         capability("transparent_windows", capabilities.transparent_windows),
         capability("wallpaper_material", capabilities.wallpaper_material),
+        capability("touch_input", capabilities.touch_input),
+        capability("pointer_input", capabilities.pointer_input),
+        capability("keyboard_input", capabilities.keyboard_input),
+        capability("file_dialogs", capabilities.file_dialogs),
         capability("shell_tabs", capabilities.shell_tabs),
         capability("command_palette", capabilities.command_palette),
         capability("workspace_sessions", capabilities.workspace_sessions),

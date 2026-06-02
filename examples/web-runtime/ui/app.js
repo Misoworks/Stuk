@@ -72,6 +72,18 @@ function currentNote() {
   return notes[selected];
 }
 
+async function invokeNative(name, params) {
+  if (!window.stuk?.bridge?.commands?.includes(name)) {
+    return null;
+  }
+  try {
+    return await window.stuk.bridge.invoke(name, params);
+  } catch (error) {
+    console.warn(error);
+    return null;
+  }
+}
+
 function renderList() {
   list.replaceChildren(
     ...notes.map((note, index) => {
@@ -119,9 +131,15 @@ body.addEventListener("input", () => {
   currentNote().saved = false;
 });
 
-newButton.addEventListener("click", () => {
+newButton.addEventListener("click", async () => {
   persistCurrentFields();
-  notes.push({ id: crypto.randomUUID(), title: "Untitled", body: "", saved: false });
+  const created = await invokeNative("notes.create", { title: "Untitled", body: "" });
+  notes.push({
+    id: created?.id || crypto.randomUUID(),
+    title: "Untitled",
+    body: "",
+    saved: false,
+  });
   selected = notes.length - 1;
   persist();
   render();

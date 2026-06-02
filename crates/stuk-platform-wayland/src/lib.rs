@@ -3,9 +3,9 @@ mod blur;
 
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform, MaterialEffect,
-    MaterialResolution, MaterialResolver, Platform, PlatformCapabilities, PlatformError,
-    WindowChrome, WindowHandle, WindowId, WindowOptions,
+    BackendDescriptor, ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform,
+    MaterialEffect, MaterialResolution, MaterialResolver, Platform, PlatformCapabilities,
+    PlatformError, WindowChrome, WindowHandle, WindowId, WindowOptions,
 };
 use stuk_style::{Material, Theme};
 
@@ -22,7 +22,9 @@ impl WaylandPlatform {
 
     pub fn from_background_effect_support(background_effects: bool) -> Self {
         Self {
-            inner: GenericPlatform::with_capabilities(wayland_capabilities(background_effects)),
+            inner: GenericPlatform::with_backend(BackendDescriptor::linux_wayland(
+                background_effects,
+            )),
             background_effects,
         }
     }
@@ -106,20 +108,18 @@ impl Platform for WaylandPlatform {
     fn platform_capabilities(&self) -> PlatformCapabilities {
         self.inner.platform_capabilities()
     }
+
+    fn backend(&self) -> BackendDescriptor {
+        self.inner.backend()
+    }
 }
 
 pub fn wayland_capabilities(background_effects: bool) -> PlatformCapabilities {
-    PlatformCapabilities {
-        live_blur: background_effects,
-        transparent_windows: background_effects,
-        wallpaper_material: false,
-        shell_tabs: false,
-        command_palette: false,
-        workspace_sessions: false,
-        native_notifications: false,
-        system_dark_mode: true,
-        high_contrast: false,
-    }
+    PlatformCapabilities::desktop_linux(background_effects, background_effects)
+}
+
+pub fn wayland_backend(background_effects: bool) -> BackendDescriptor {
+    BackendDescriptor::linux_wayland(background_effects)
 }
 
 #[cfg(test)]

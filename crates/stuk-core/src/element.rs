@@ -1,5 +1,5 @@
 use stuk_layout::{Axis, EdgeInsets, Length};
-use stuk_platform::{WindowBackgroundEffect, WindowChrome};
+use stuk_platform::{WindowBackgroundEffect, WindowChrome, WindowRegions};
 use stuk_style::{ButtonVariant, Color, Material, NumberSpacing, TextWrap};
 
 use crate::control_elements::{
@@ -136,6 +136,7 @@ pub struct WindowElement {
     pub chrome: WindowChrome,
     pub transparent: bool,
     pub background_effect: WindowBackgroundEffect,
+    pub regions: WindowRegions,
     pub content: Option<Box<Element>>,
     pub width: u32,
     pub height: u32,
@@ -154,6 +155,7 @@ impl Default for WindowElement {
             chrome: WindowChrome::System,
             transparent: false,
             background_effect: WindowBackgroundEffect::None,
+            regions: WindowRegions::default(),
             content: None,
             width: 760,
             height: 520,

@@ -1,4 +1,8 @@
-use std::process::{Command, ExitCode};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    process::{Command, ExitCode},
+};
 
 use crate::project::validate_local_manifest_for_cargo;
 
@@ -14,6 +18,9 @@ pub enum BuildTarget {
     Linux,
     Windows,
     Macos,
+    Android,
+    Ios,
+    Web,
 }
 
 impl BuildTarget {
@@ -23,6 +30,9 @@ impl BuildTarget {
             "linux" => Some(Self::Linux),
             "windows" => Some(Self::Windows),
             "macos" => Some(Self::Macos),
+            "android" => Some(Self::Android),
+            "ios" => Some(Self::Ios),
+            "web" | "wasm" => Some(Self::Web),
             _ => None,
         }
     }
@@ -33,6 +43,9 @@ impl BuildTarget {
             Self::Linux => "linux",
             Self::Windows => "windows",
             Self::Macos => "macos",
+            Self::Android => "android",
+            Self::Ios => "ios",
+            Self::Web => "web",
         }
     }
 
@@ -46,6 +59,20 @@ impl BuildTarget {
             Self::Windows => Some("x86_64-pc-windows-msvc"),
             Self::Macos if cfg!(target_arch = "aarch64") => Some("aarch64-apple-darwin"),
             Self::Macos => Some("x86_64-apple-darwin"),
+            Self::Android => Some("aarch64-linux-android"),
+            Self::Ios => Some("aarch64-apple-ios"),
+            Self::Web => Some("wasm32-unknown-unknown"),
+        }
+    }
+
+    fn manifest_targets(self) -> &'static [&'static str] {
+        match self {
+            Self::Staccato | Self::Linux => &["desktop", "linux"],
+            Self::Windows => &["desktop", "windows"],
+            Self::Macos => &["desktop", "macos"],
+            Self::Android => &["android"],
+            Self::Ios => &["ios"],
+            Self::Web => &["web"],
         }
     }
 }
@@ -60,7 +87,8 @@ impl BuildOptions {
     pub fn command_plan(&self) -> Result<BuildCommandPlan, String> {
         let stuk_target = match self.target.as_deref() {
             Some(target) => Some(BuildTarget::parse(target).ok_or_else(|| {
-                "unknown build target; use staccato, linux, windows, or macos".to_string()
+                "unknown build target; use staccato, linux, windows, macos, android, ios, or web"
+                    .to_string()
             })?),
             None => None,
         };
@@ -84,6 +112,9 @@ impl BuildOptions {
 pub fn run_build(options: BuildOptions) -> Result<ExitCode, String> {
     validate_local_manifest_for_cargo("build")?;
     let plan = options.command_plan()?;
+    if let Some(target) = plan.stuk_target {
+        validate_manifest_supports_target(target)?;
+    }
 
     if let Some(target) = plan.stuk_target {
         println!("Building for {}", target.as_str());
@@ -103,6 +134,41 @@ pub fn run_build(options: BuildOptions) -> Result<ExitCode, String> {
     Ok(exit_code_from_status(status.code()))
 }
 
+fn validate_manifest_supports_target(target: BuildTarget) -> Result<(), String> {
+    if !Path::new("Stuk.toml").is_file() {
+        return Ok(());
+    }
+    let manifest = stuk_manifest::parse_file("Stuk.toml").map_err(|error| error.to_string())?;
+    if manifest_targets_allow(&manifest.targets, target) {
+        return Ok(());
+    }
+    Err(format!(
+        "Stuk.toml does not enable target `{}`; update [targets] before building it",
+        target.as_str()
+    ))
+}
+
+fn manifest_targets_allow(targets: &BTreeMap<String, bool>, target: BuildTarget) -> bool {
+    if targets.is_empty() {
+        return matches!(
+            target,
+            BuildTarget::Staccato | BuildTarget::Linux | BuildTarget::Windows | BuildTarget::Macos
+        );
+    }
+
+    let requires = target.manifest_targets();
+    requires.iter().all(|name| {
+        if *name == "desktop" {
+            return targets.get(*name).copied().unwrap_or(false);
+        }
+        let platform_specific_desktop = matches!(*name, "linux" | "windows" | "macos");
+        if platform_specific_desktop && !targets.contains_key(*name) {
+            return true;
+        }
+        targets.get(*name).copied().unwrap_or(false)
+    })
+}
+
 fn exit_code_from_status(code: Option<i32>) -> ExitCode {
     match code.and_then(|code| u8::try_from(code).ok()) {
         Some(code) => ExitCode::from(code),
@@ -120,6 +186,10 @@ mod tests {
         assert_eq!(BuildTarget::parse("linux"), Some(BuildTarget::Linux));
         assert_eq!(BuildTarget::parse("windows"), Some(BuildTarget::Windows));
         assert_eq!(BuildTarget::parse("macos"), Some(BuildTarget::Macos));
+        assert_eq!(BuildTarget::parse("android"), Some(BuildTarget::Android));
+        assert_eq!(BuildTarget::parse("ios"), Some(BuildTarget::Ios));
+        assert_eq!(BuildTarget::parse("web"), Some(BuildTarget::Web));
+        assert_eq!(BuildTarget::parse("wasm"), Some(BuildTarget::Web));
         assert_eq!(BuildTarget::parse("freebsd"), None);
     }
 
@@ -150,5 +220,21 @@ mod tests {
             vec!["build", "--target", "x86_64-pc-windows-msvc"]
         );
         assert_eq!(plan.stuk_target, Some(BuildTarget::Windows));
+    }
+
+    #[test]
+    fn build_targets_must_be_enabled_by_manifest_targets() {
+        let targets = BTreeMap::from([
+            ("desktop".to_string(), true),
+            ("linux".to_string(), true),
+            ("windows".to_string(), false),
+            ("android".to_string(), false),
+            ("web".to_string(), true),
+        ]);
+
+        assert!(manifest_targets_allow(&targets, BuildTarget::Linux));
+        assert!(manifest_targets_allow(&targets, BuildTarget::Web));
+        assert!(!manifest_targets_allow(&targets, BuildTarget::Android));
+        assert!(!manifest_targets_allow(&targets, BuildTarget::Windows));
     }
 }

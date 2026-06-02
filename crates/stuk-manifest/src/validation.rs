@@ -65,6 +65,9 @@ const VALID_WEBVIEW_RUNTIMES: &[&str] = &[
     "disabled",
 ];
 const VALID_WEBVIEW_DEVTOOLS: &[&str] = &["disabled", "dev-only", "enabled"];
+const VALID_TARGETS: &[&str] = &[
+    "desktop", "linux", "windows", "macos", "android", "ios", "web",
+];
 
 pub fn validate(manifest: &Manifest) -> Vec<Diagnostic> {
     validate_inner(manifest, None)
@@ -179,6 +182,7 @@ fn validate_inner(manifest: &Manifest, base_dir: Option<&Path>) -> Vec<Diagnosti
     validate_settings(&manifest.settings, &mut diagnostics);
     validate_permissions(&manifest.permissions, &mut diagnostics);
     validate_platform(&manifest.platform, &mut diagnostics);
+    validate_targets(&manifest.targets, &manifest.webview, &mut diagnostics);
     validate_webview(&manifest.webview, base_dir, &mut diagnostics);
 
     diagnostics
@@ -257,6 +261,28 @@ fn validate_webview(
             ),
         });
     }
+
+    if let Some(permissions) = &webview.security.allowed_bridge_permissions {
+        for (index, permission) in permissions.iter().enumerate() {
+            if permission.trim().is_empty() {
+                diagnostics.push(Diagnostic {
+                    level: DiagnosticLevel::Error,
+                    path: format!("webview.security.allowed_bridge_permissions.{index}"),
+                    message: "Bridge permission cannot be empty.".to_string(),
+                    fix_hint: Some(
+                        "Use a named permission such as filesystem or clipboard.".to_string(),
+                    ),
+                });
+            } else if permission == "*" {
+                diagnostics.push(Diagnostic {
+                    level: DiagnosticLevel::Warning,
+                    path: format!("webview.security.allowed_bridge_permissions.{index}"),
+                    message: "Wildcard bridge permissions expose every declared native command permission.".to_string(),
+                    fix_hint: Some("List only the permissions this webview needs.".to_string()),
+                });
+            }
+        }
+    }
 }
 
 fn validate_actions(actions: &BTreeMap<String, toml::Value>, diagnostics: &mut Vec<Diagnostic>) {
@@ -296,6 +322,45 @@ fn validate_icon(icon: &str, base_dir: Option<&Path>, diagnostics: &mut Vec<Diag
                 path: "app.icon".to_string(),
                 message: format!("App icon `{icon}` does not exist."),
                 fix_hint: Some("Add the icon file or update app.icon.".to_string()),
+            });
+        }
+    }
+}
+
+fn validate_targets(
+    targets: &BTreeMap<String, bool>,
+    webview: &WebViewSection,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for target in targets.keys() {
+        if !VALID_TARGETS.contains(&target.as_str()) {
+            diagnostics.push(Diagnostic {
+                level: DiagnosticLevel::Error,
+                path: format!("targets.{target}"),
+                message: "Unknown target.".to_string(),
+                fix_hint: Some(format!("Use one of: {}.", VALID_TARGETS.join(", "))),
+            });
+        }
+    }
+
+    let uses_webview = webview
+        .engine
+        .as_deref()
+        .is_some_and(|engine| engine == "cef");
+    if !uses_webview {
+        return;
+    }
+
+    for target in ["android", "ios"] {
+        if targets.get(target).copied().unwrap_or(false) {
+            diagnostics.push(Diagnostic {
+                level: DiagnosticLevel::Error,
+                path: format!("targets.{target}"),
+                message: "CEF webview apps cannot target native mobile runtimes.".to_string(),
+                fix_hint: Some(
+                    "Use a native Stuk mobile UI or ship the web UI as a web target without the CEF runtime."
+                        .to_string(),
+                ),
             });
         }
     }

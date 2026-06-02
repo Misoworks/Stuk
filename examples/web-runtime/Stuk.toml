@@ -8,8 +8,8 @@ title = "Notes"
 width = 860
 height = 560
 chrome = "stuk"
-transparent = false
-background_effect = "none"
+transparent = true
+background_effect = "blur"
 
 [webview]
 engine = "cef"

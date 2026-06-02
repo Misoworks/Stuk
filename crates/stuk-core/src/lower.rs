@@ -2,7 +2,7 @@ use stuk_actions::ActionHitRegion;
 use stuk_layout::{
     Axis, FlexItem, GridItem, Rect, Size, flex_layout, grid_layout, stack_layout_items,
 };
-use stuk_platform::{NativeFrame, WindowBackgroundEffect, WindowChrome};
+use stuk_platform::{NativeFrame, WindowBackgroundEffect, WindowChrome, WindowRegions};
 use stuk_render::{DisplayList, RectCommand, RoundedRectCommand, TextCommand};
 use stuk_style::{Material, NumberSpacing, TextAlign, TextWrap, Theme};
 
@@ -37,6 +37,7 @@ pub struct BuiltWindow {
     pub chrome: WindowChrome,
     pub transparent: bool,
     pub background_effect: WindowBackgroundEffect,
+    pub regions: WindowRegions,
     material: Material,
     theme: Theme,
     content: Element,
@@ -58,6 +59,7 @@ pub(crate) fn build_window<V: View>(root: &V, cx: &mut Cx) -> BuiltWindow {
             chrome: window.chrome,
             transparent: window.transparent,
             background_effect: window.background_effect,
+            regions: window.regions,
             continuous_redraw: window.continuous_redraw,
             material: window.material,
             theme,
@@ -77,6 +79,7 @@ pub(crate) fn build_window<V: View>(root: &V, cx: &mut Cx) -> BuiltWindow {
             chrome: WindowChrome::System,
             transparent: false,
             background_effect: WindowBackgroundEffect::None,
+            regions: WindowRegions::default(),
             continuous_redraw: false,
             material: Material::Maris,
             theme,

@@ -2,6 +2,8 @@
 #define STUK_CEF_HOST_HANDLER_H_
 
 #include <list>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "include/cef_client.h"
@@ -13,7 +15,8 @@ class StukHandler : public CefClient,
                     public CefLoadHandler,
                     public CefRequestHandler {
  public:
-  StukHandler();
+  StukHandler(std::vector<std::string> bridge_commands,
+              bool transparent_background);
   ~StukHandler() override;
 
   static StukHandler* GetInstance();
@@ -38,15 +41,34 @@ class StukHandler : public CefClient,
                    ErrorCode errorCode,
                    const CefString& errorText,
                    const CefString& failedUrl) override;
+  void OnLoadStart(CefRefPtr<CefBrowser> browser,
+                   CefRefPtr<CefFrame> frame,
+                   TransitionType transition_type) override;
+  void OnLoadEnd(CefRefPtr<CefBrowser> browser,
+                 CefRefPtr<CefFrame> frame,
+                 int httpStatusCode) override;
   bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser,
                       CefRefPtr<CefFrame> frame,
                       CefRefPtr<CefRequest> request,
                       bool user_gesture,
                       bool is_redirect) override;
+  void ResolveBridgeResponse(const std::string& browser_id,
+                             const std::string& request_id,
+                             bool ok,
+                             const std::string& payload);
 
  private:
   using BrowserList = std::list<CefRefPtr<CefBrowser>>;
+  bool HandleBridgeCommand(CefRefPtr<CefBrowser> browser,
+                           CefRefPtr<CefFrame> frame,
+                           const std::string& url);
+  void InstallBridge(CefRefPtr<CefBrowser> browser,
+                     CefRefPtr<CefFrame> frame);
+  void InstallTransparentBackground(CefRefPtr<CefFrame> frame);
+
   BrowserList browsers_;
+  std::set<std::string> bridge_commands_;
+  bool transparent_background_ = false;
   bool closing_ = false;
 
   IMPLEMENT_REFCOUNTING(StukHandler);

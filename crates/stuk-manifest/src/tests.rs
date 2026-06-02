@@ -193,3 +193,29 @@ csp = "default-src 'self'"
     let diagnostics = validate(&manifest);
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 }
+
+#[test]
+fn rejects_mobile_targets_for_cef_webview() {
+    let manifest = parse(
+        r#"
+[app]
+id = "dev.example.app"
+name = "App"
+version = "0.1.0"
+
+[targets]
+desktop = true
+android = true
+ios = true
+web = true
+
+[webview]
+engine = "cef"
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = validate(&manifest);
+    assert_has_error(&diagnostics, "targets.android");
+    assert_has_error(&diagnostics, "targets.ios");
+}

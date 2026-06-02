@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "handler.h"
 #include "include/cef_browser.h"
@@ -30,6 +32,88 @@ CefWindowHandle ParentWindow(CefRefPtr<CefCommandLine> command_line) {
     return kNullWindowHandle;
   }
   return static_cast<CefWindowHandle>(std::strtoull(value.c_str(), nullptr, 0));
+}
+
+std::vector<std::string> BridgeCommands(CefRefPtr<CefCommandLine> command_line) {
+  std::vector<std::string> commands;
+  std::stringstream stream(
+      std::string(command_line->GetSwitchValue("stuk-bridge-commands")));
+  std::string item;
+  while (std::getline(stream, item, ',')) {
+    if (!item.empty()) {
+      commands.push_back(item);
+    }
+  }
+  return commands;
+}
+
+std::string JsString(const std::string& value) {
+  std::string output = "\"";
+  for (char c : value) {
+    switch (c) {
+      case '\\':
+        output += "\\\\";
+        break;
+      case '"':
+        output += "\\\"";
+        break;
+      case '\n':
+        output += "\\n";
+        break;
+      case '\r':
+        output += "\\r";
+        break;
+      case '\t':
+        output += "\\t";
+        break;
+      default:
+        output += c;
+        break;
+    }
+  }
+  output += "\"";
+  return output;
+}
+
+std::string JsArray(const std::vector<std::string>& values) {
+  std::string output = "[";
+  bool first = true;
+  for (const auto& value : values) {
+    if (!first) {
+      output += ",";
+    }
+    output += JsString(value);
+    first = false;
+  }
+  output += "]";
+  return output;
+}
+
+std::string BridgeInstallScript(const std::vector<std::string>& commands) {
+  return "(function(){"
+         "if(window.stuk&&window.stuk.bridge&&window.stuk.bridge.__native)return;"
+         "const commands=new Set(" +
+         JsArray(commands) +
+         ");"
+         "const pending=new Map();let nextId=1;"
+         "window.__stukBridgeResolve=function(id,ok,payload){"
+         "const entry=pending.get(String(id));if(!entry)return;"
+         "pending.delete(String(id));"
+         "if(ok){entry.resolve(payload);}else{entry.reject(new Error((payload&&payload.message)||'Stuk bridge command failed'));}"
+         "};"
+         "window.stuk=window.stuk||{};"
+         "window.stuk.bridge={__native:true,commands:Array.from(commands),invoke(name,params={}){"
+         "if(!commands.has(name))return Promise.reject(new Error('Stuk bridge command not registered: '+name));"
+         "const id=String(nextId++);"
+         "const payload=encodeURIComponent(JSON.stringify(params));"
+         "const url='stuk://bridge/'+encodeURIComponent(id)+'?name='+encodeURIComponent(name)+'&payload='+payload;"
+         "return new Promise((resolve,reject)=>{"
+         "pending.set(id,{resolve,reject});"
+         "setTimeout(()=>{if(pending.has(id)){pending.delete(id);reject(new Error('Stuk bridge command timed out: '+name));}},60000);"
+         "window.location.href=url;"
+         "});"
+         "}};"
+         "})();";
 }
 
 class StukBrowserViewDelegate : public CefBrowserViewDelegate {
@@ -126,7 +210,8 @@ void CreateStukBrowserWindow(CefRefPtr<CefCommandLine> command_line) {
   window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 
   CefWindowHandle parent = ParentWindow(command_line);
-  CefRefPtr<StukHandler> handler(new StukHandler);
+  CefRefPtr<StukHandler> handler(new StukHandler(
+      BridgeCommands(command_line), command_line->HasSwitch("stuk-transparent")));
   if (parent != kNullWindowHandle) {
     window_info.SetAsChild(parent, CefRect(x, y, width, height));
     CefBrowserHost::CreateBrowser(window_info, handler, url, browser_settings,
@@ -169,6 +254,22 @@ void StukApp::OnContextInitialized() {
   CefRefPtr<CefCommandLine> command_line =
       CefCommandLine::GetGlobalCommandLine();
   CreateStukBrowserWindow(command_line);
+}
+
+void StukApp::OnContextCreated(CefRefPtr<CefBrowser> browser,
+                               CefRefPtr<CefFrame> frame,
+                               CefRefPtr<CefV8Context> context) {
+  CEF_REQUIRE_RENDERER_THREAD();
+  if (!frame->IsMain()) {
+    return;
+  }
+  CefRefPtr<CefCommandLine> command_line =
+      CefCommandLine::GetGlobalCommandLine();
+  const auto commands = BridgeCommands(command_line);
+  if (commands.empty()) {
+    return;
+  }
+  frame->ExecuteJavaScript(BridgeInstallScript(commands), frame->GetURL(), 0);
 }
 
 bool StukApp::OnAlreadyRunningAppRelaunch(

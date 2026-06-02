@@ -20,6 +20,8 @@ pub struct Manifest {
     #[serde(default)]
     pub permissions: BTreeMap<String, toml::Value>,
     #[serde(default)]
+    pub targets: BTreeMap<String, bool>,
+    #[serde(default)]
     pub actions: BTreeMap<String, toml::Value>,
     #[serde(default)]
     pub settings: BTreeMap<String, toml::Value>,
@@ -90,6 +92,8 @@ pub struct WebViewSecuritySection {
     pub remote_content: Option<bool>,
     #[serde(default)]
     pub allowed_origins: Option<Vec<String>>,
+    #[serde(default)]
+    pub allowed_bridge_permissions: Option<Vec<String>>,
     #[serde(default)]
     pub devtools: Option<String>,
     #[serde(default)]

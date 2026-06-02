@@ -1,8 +1,9 @@
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform, MaterialEffect,
-    MaterialResolution, MaterialResolver, Platform, PlatformCapabilities, PlatformError,
-    WindowChrome, WindowHandle, WindowId, WindowOptions,
+    BackendDescriptor, BackendKind, BackendStatus, ClipboardData, FileDialogOptions,
+    FileDialogResult, GenericPlatform, MaterialEffect, MaterialResolution, MaterialResolver,
+    Platform, PlatformCapabilities, PlatformError, PlatformOs, RuntimeTarget, WindowChrome,
+    WindowHandle, WindowId, WindowOptions,
 };
 use stuk_style::{Material, Theme};
 
@@ -19,7 +20,7 @@ impl WindowsPlatform {
 
     pub fn with_backdrop(backdrop: WindowsBackdrop) -> Self {
         Self {
-            inner: GenericPlatform::with_capabilities(windows_capabilities(backdrop)),
+            inner: GenericPlatform::with_backend(windows_backend(backdrop)),
             backdrop,
         }
     }
@@ -116,20 +117,24 @@ impl Platform for WindowsPlatform {
     fn platform_capabilities(&self) -> PlatformCapabilities {
         self.inner.platform_capabilities()
     }
+
+    fn backend(&self) -> BackendDescriptor {
+        self.inner.backend()
+    }
 }
 
 pub fn windows_capabilities(backdrop: WindowsBackdrop) -> PlatformCapabilities {
-    PlatformCapabilities {
-        live_blur: backdrop != WindowsBackdrop::Disabled,
-        transparent_windows: backdrop != WindowsBackdrop::Disabled,
-        wallpaper_material: false,
-        shell_tabs: false,
-        command_palette: false,
-        workspace_sessions: false,
-        native_notifications: true,
-        system_dark_mode: true,
-        high_contrast: true,
-    }
+    PlatformCapabilities::desktop_windows(backdrop != WindowsBackdrop::Disabled)
+}
+
+pub fn windows_backend(backdrop: WindowsBackdrop) -> BackendDescriptor {
+    BackendDescriptor::new(
+        "windows",
+        BackendKind::NativeDesktop,
+        RuntimeTarget::desktop(PlatformOs::Windows),
+        BackendStatus::Available,
+        windows_capabilities(backdrop),
+    )
 }
 
 #[cfg(test)]

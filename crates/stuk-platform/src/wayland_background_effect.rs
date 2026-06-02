@@ -1,11 +1,16 @@
-use std::ffi::{c_char, c_uint, c_void};
-use std::ptr;
 use std::sync::Arc;
 
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::window::Window;
 
-use crate::{WindowBackgroundEffect, WindowOptions};
+use crate::{WindowBackgroundEffect, WindowOptions, WindowRegion};
+
+#[cfg(target_os = "linux")]
+use std::ffi::{c_char, c_uint, c_void};
+#[cfg(target_os = "linux")]
+use std::ptr;
+
+#[cfg(target_os = "linux")]
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 #[cfg(target_os = "linux")]
 #[path = "wayland_background_effect_protocol.rs"]
@@ -15,8 +20,10 @@ use wayland_background_effect_protocol::*;
 
 #[cfg(target_os = "linux")]
 pub(crate) fn request(window: &Arc<dyn Window>, options: &WindowOptions) -> Option<WaylandEffect> {
-    if !options.transparent || options.background_effect == WindowBackgroundEffect::None {
-        debug("skipped: transparent window with a background effect was not requested");
+    let wants_blur =
+        options.transparent && options.background_effect != WindowBackgroundEffect::None;
+    if !wants_blur && options.regions.is_empty() {
+        debug("skipped: background effect and surface regions were not requested");
         return None;
     }
     let Some(display) = wayland_display(window) else {
@@ -35,6 +42,8 @@ pub(crate) fn request(window: &Arc<dyn Window>, options: &WindowOptions) -> Opti
             options.background_effect,
             options.width as i32,
             options.height as i32,
+            wants_blur,
+            options,
         )
     }
 }
@@ -48,12 +57,21 @@ pub(crate) fn request(
 }
 
 #[derive(Debug)]
+#[cfg(target_os = "linux")]
 pub(crate) struct WaylandEffect {
+    display: *mut WlDisplay,
+    surface: *mut WlProxy,
     effect: *mut WlProxy,
     manager: *mut WlProxy,
+    compositor: *mut WlProxy,
     _manager_state: Box<ManagerState>,
 }
 
+#[cfg(not(target_os = "linux"))]
+#[derive(Debug)]
+pub(crate) struct WaylandEffect;
+
+#[cfg(target_os = "linux")]
 impl Drop for WaylandEffect {
     fn drop(&mut self) {
         unsafe {
@@ -65,6 +83,30 @@ impl Drop for WaylandEffect {
                 wl_proxy_marshal_flags(self.manager, MANAGER_DESTROY, ptr::null(), 1, DESTROY_FLAG);
                 self.manager = ptr::null_mut();
             }
+            if !self.compositor.is_null() {
+                wl_proxy_destroy(self.compositor.cast());
+                self.compositor = ptr::null_mut();
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl WaylandEffect {
+    pub(crate) fn update(&self, options: &WindowOptions, width: i32, height: i32) -> bool {
+        if self.display.is_null() || self.surface.is_null() || self.compositor.is_null() {
+            return false;
+        }
+        unsafe {
+            apply_surface_regions(
+                self.display,
+                self.surface,
+                self.compositor,
+                self.effect,
+                options,
+                width,
+                height,
+            )
         }
     }
 }
@@ -96,6 +138,8 @@ impl ExtBackgroundEffect {
         _effect: WindowBackgroundEffect,
         width: i32,
         height: i32,
+        wants_blur: bool,
+        options: &WindowOptions,
     ) -> Option<WaylandEffect> {
         if display.is_null() || surface.is_null() {
             return None;
@@ -135,61 +179,11 @@ impl ExtBackgroundEffect {
             wl_display_roundtrip(display);
         }
 
-        let Some(manager_name) = state.manager_name else {
-            debug("ext_background_effect_manager_v1 was not advertised");
-            unsafe { wl_proxy_destroy(registry.cast()) };
-            return None;
-        };
         let Some(compositor_name) = state.compositor_name else {
             debug("wl_compositor was not advertised");
             unsafe { wl_proxy_destroy(registry.cast()) };
             return None;
         };
-
-        debug("binding ext_background_effect_manager_v1");
-        let manager = unsafe {
-            wl_proxy_marshal_flags(
-                registry.cast(),
-                REGISTRY_BIND,
-                &EXT_BACKGROUND_EFFECT_MANAGER_V1_INTERFACE,
-                1,
-                0,
-                manager_name,
-                EXT_BACKGROUND_EFFECT_MANAGER_V1_INTERFACE.name,
-                1_u32,
-                ptr::null::<c_void>(),
-            )
-        };
-        if manager.is_null() {
-            debug("failed to bind ext_background_effect_manager_v1");
-            unsafe { wl_proxy_destroy(registry.cast()) };
-            return None;
-        }
-        debug("bound ext_background_effect_manager_v1");
-
-        let mut manager_state = Box::<ManagerState>::default();
-        let add_manager_listener = unsafe {
-            wl_proxy_add_listener(
-                manager.cast(),
-                &MANAGER_LISTENER as *const ManagerListener as *mut _,
-                manager_state.as_mut() as *mut ManagerState as *mut c_void,
-            )
-        };
-        if add_manager_listener != 0 {
-            debug("failed to add ext_background_effect_manager_v1 listener");
-            unsafe { wl_proxy_destroy(registry.cast()) };
-            unsafe { wl_proxy_destroy(manager.cast()) };
-            return None;
-        }
-        unsafe {
-            wl_display_roundtrip(display);
-        }
-        if !manager_state.supports_blur() {
-            debug("ext_background_effect_manager_v1 does not advertise blur capability");
-            unsafe { wl_proxy_destroy(registry.cast()) };
-            unsafe { wl_proxy_destroy(manager.cast()) };
-            return None;
-        }
 
         let compositor = unsafe {
             wl_proxy_marshal_flags(
@@ -204,62 +198,136 @@ impl ExtBackgroundEffect {
                 ptr::null::<c_void>(),
             )
         };
-        unsafe { wl_proxy_destroy(registry.cast()) };
         if compositor.is_null() {
             debug("failed to bind wl_compositor");
-            unsafe { wl_proxy_destroy(manager.cast()) };
+            unsafe { wl_proxy_destroy(registry.cast()) };
             return None;
         }
 
-        let effect_proxy = unsafe {
-            wl_proxy_marshal_flags(
-                manager.cast(),
-                MANAGER_GET_BACKGROUND_EFFECT,
-                &EXT_BACKGROUND_EFFECT_SURFACE_V1_INTERFACE,
-                1,
-                0,
-                ptr::null::<c_void>(),
-                surface,
-            )
-        };
-        if effect_proxy.is_null() {
-            debug("failed to create ext_background_effect_surface_v1");
-            unsafe { wl_proxy_destroy(compositor.cast()) };
-            unsafe { wl_proxy_destroy(manager.cast()) };
-            return None;
-        }
-        debug("created ext_background_effect_surface_v1");
+        let mut manager_state = Box::<ManagerState>::default();
+        let mut manager = ptr::null_mut();
+        let mut effect_proxy = ptr::null_mut();
+        if wants_blur {
+            let Some(manager_name) = state.manager_name else {
+                debug("ext_background_effect_manager_v1 was not advertised");
+                unsafe { wl_proxy_destroy(registry.cast()) };
+                unsafe { wl_proxy_destroy(compositor.cast()) };
+                return None;
+            };
+            debug("binding ext_background_effect_manager_v1");
+            manager = unsafe {
+                wl_proxy_marshal_flags(
+                    registry.cast(),
+                    REGISTRY_BIND,
+                    &EXT_BACKGROUND_EFFECT_MANAGER_V1_INTERFACE,
+                    1,
+                    0,
+                    manager_name,
+                    EXT_BACKGROUND_EFFECT_MANAGER_V1_INTERFACE.name,
+                    1_u32,
+                    ptr::null::<c_void>(),
+                )
+            };
+            if manager.is_null() {
+                debug("failed to bind ext_background_effect_manager_v1");
+                unsafe { wl_proxy_destroy(registry.cast()) };
+                unsafe { wl_proxy_destroy(compositor.cast()) };
+                return None;
+            }
+            debug("bound ext_background_effect_manager_v1");
 
-        let region = unsafe {
-            wl_proxy_marshal_flags(
-                compositor,
-                COMPOSITOR_CREATE_REGION,
-                &WL_REGION_INTERFACE,
-                1,
-                0,
-                ptr::null::<c_void>(),
-            )
-        };
-        if region.is_null() {
-            debug("failed to create blur wl_region");
-            unsafe { wl_proxy_destroy(effect_proxy.cast()) };
-            unsafe { wl_proxy_destroy(compositor.cast()) };
-            unsafe { wl_proxy_destroy(manager.cast()) };
-            return None;
+            let add_manager_listener = unsafe {
+                wl_proxy_add_listener(
+                    manager.cast(),
+                    &MANAGER_LISTENER as *const ManagerListener as *mut _,
+                    manager_state.as_mut() as *mut ManagerState as *mut c_void,
+                )
+            };
+            if add_manager_listener != 0 {
+                debug("failed to add ext_background_effect_manager_v1 listener");
+                unsafe { wl_proxy_destroy(registry.cast()) };
+                unsafe { wl_proxy_destroy(compositor.cast()) };
+                unsafe { wl_proxy_destroy(manager.cast()) };
+                return None;
+            }
+            unsafe {
+                wl_display_roundtrip(display);
+            }
+            if !manager_state.supports_blur() {
+                debug("ext_background_effect_manager_v1 does not advertise blur capability");
+                unsafe { wl_proxy_destroy(registry.cast()) };
+                unsafe { wl_proxy_destroy(compositor.cast()) };
+                unsafe { wl_proxy_destroy(manager.cast()) };
+                return None;
+            }
+
+            effect_proxy = unsafe {
+                wl_proxy_marshal_flags(
+                    manager.cast(),
+                    MANAGER_GET_BACKGROUND_EFFECT,
+                    &EXT_BACKGROUND_EFFECT_SURFACE_V1_INTERFACE,
+                    1,
+                    0,
+                    ptr::null::<c_void>(),
+                    surface,
+                )
+            };
+            if effect_proxy.is_null() {
+                debug("failed to create ext_background_effect_surface_v1");
+                unsafe { wl_proxy_destroy(registry.cast()) };
+                unsafe { wl_proxy_destroy(compositor.cast()) };
+                unsafe { wl_proxy_destroy(manager.cast()) };
+                return None;
+            }
+            debug("created ext_background_effect_surface_v1");
         }
+        unsafe { wl_proxy_destroy(registry.cast()) };
 
         unsafe {
-            wl_proxy_marshal_flags(
-                region,
-                REGION_ADD,
-                ptr::null(),
-                1,
-                0,
-                0_i32,
-                0_i32,
+            apply_surface_regions(
+                display,
+                surface,
+                compositor,
+                effect_proxy,
+                options,
                 width,
                 height,
-            );
+            )
+        };
+        debug("committed ext_background_effect_surface_v1");
+
+        Some(WaylandEffect {
+            display,
+            surface,
+            effect: effect_proxy,
+            manager: manager.cast(),
+            compositor: compositor.cast(),
+            _manager_state: manager_state,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn apply_surface_regions(
+    display: *mut WlDisplay,
+    surface: *mut WlProxy,
+    compositor: *mut WlProxy,
+    effect_proxy: *mut WlProxy,
+    options: &WindowOptions,
+    width: i32,
+    height: i32,
+) -> bool {
+    if !effect_proxy.is_null() {
+        let blur = options
+            .regions
+            .blur
+            .clone()
+            .unwrap_or_else(WindowRegion::adaptive_full);
+        let Some(region) = (unsafe { create_region(compositor, &blur, width, height) }) else {
+            debug("failed to create blur wl_region");
+            return false;
+        };
+        unsafe {
             wl_proxy_marshal_flags(
                 effect_proxy,
                 EFFECT_SET_BLUR_REGION,
@@ -269,24 +337,91 @@ impl ExtBackgroundEffect {
                 region,
             );
             wl_proxy_marshal_flags(region, REGION_DESTROY, ptr::null(), 1, DESTROY_FLAG);
-            wl_proxy_destroy(compositor.cast());
+        }
+    }
+
+    if let Some(opaque) = &options.regions.opaque
+        && let Some(region) = (unsafe { create_region(compositor, opaque, width, height) })
+    {
+        unsafe {
             wl_proxy_marshal_flags(
                 surface,
-                SURFACE_COMMIT,
+                SURFACE_SET_OPAQUE_REGION,
                 ptr::null(),
                 wl_proxy_get_version(surface),
                 0,
+                region,
             );
-            wl_display_flush(display);
+            wl_proxy_marshal_flags(region, REGION_DESTROY, ptr::null(), 1, DESTROY_FLAG);
         }
-        debug("committed ext_background_effect_surface_v1");
-
-        Some(WaylandEffect {
-            effect: effect_proxy,
-            manager: manager.cast(),
-            _manager_state: manager_state,
-        })
     }
+
+    if let Some(input) = &options.regions.input
+        && let Some(region) = (unsafe { create_region(compositor, input, width, height) })
+    {
+        unsafe {
+            wl_proxy_marshal_flags(
+                surface,
+                SURFACE_SET_INPUT_REGION,
+                ptr::null(),
+                wl_proxy_get_version(surface),
+                0,
+                region,
+            );
+            wl_proxy_marshal_flags(region, REGION_DESTROY, ptr::null(), 1, DESTROY_FLAG);
+        }
+    }
+
+    unsafe {
+        wl_proxy_marshal_flags(
+            surface,
+            SURFACE_COMMIT,
+            ptr::null(),
+            wl_proxy_get_version(surface),
+            0,
+        );
+        wl_display_flush(display);
+    }
+    true
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn create_region(
+    compositor: *mut WlProxy,
+    region: &WindowRegion,
+    width: i32,
+    height: i32,
+) -> Option<*mut WlProxy> {
+    let proxy = unsafe {
+        wl_proxy_marshal_flags(
+            compositor,
+            COMPOSITOR_CREATE_REGION,
+            &WL_REGION_INTERFACE,
+            1,
+            0,
+            ptr::null::<c_void>(),
+        )
+    };
+    if proxy.is_null() {
+        return None;
+    }
+
+    for rect in region.resolved_rects(width, height) {
+        unsafe {
+            wl_proxy_marshal_flags(
+                proxy,
+                REGION_ADD,
+                ptr::null(),
+                1,
+                0,
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+            );
+        }
+    }
+    Some(proxy)
 }
 
 #[cfg(target_os = "linux")]

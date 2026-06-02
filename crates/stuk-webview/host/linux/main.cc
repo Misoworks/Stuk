@@ -25,8 +25,9 @@ int XIOErrorHandlerImpl(Display* display) {
 NO_STACK_PROTECTOR
 int main(int argc, char* argv[]) {
   CefMainArgs main_args(argc, argv);
+  CefRefPtr<StukApp> app(new StukApp);
 
-  int exit_code = CefExecuteProcess(main_args, nullptr, nullptr);
+  int exit_code = CefExecuteProcess(main_args, app.get(), nullptr);
   if (exit_code >= 0) {
     return exit_code;
   }
@@ -53,7 +54,6 @@ int main(int argc, char* argv[]) {
     CefString(&settings.cache_path).FromString(cache_path);
   }
 
-  CefRefPtr<StukApp> app(new StukApp);
   if (!CefInitialize(main_args, settings, app.get(), nullptr)) {
     return CefGetExitCode();
   }

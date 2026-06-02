@@ -15,6 +15,9 @@ members = [
     "crates/stuk-platform-wayland",
     "crates/stuk-platform-windows",
     "crates/stuk-platform-macos",
+    "crates/stuk-platform-android",
+    "crates/stuk-platform-ios",
+    "crates/stuk-platform-web",
     "crates/stuk-accessibility",
     "crates/stuk-settings",
     "crates/stuk-manifest",
@@ -51,6 +54,9 @@ stuk-platform-staccato = { path = "crates/stuk-platform-staccato" }
 stuk-platform-wayland = { path = "crates/stuk-platform-wayland" }
 stuk-platform-windows = { path = "crates/stuk-platform-windows" }
 stuk-platform-macos = { path = "crates/stuk-platform-macos" }
+stuk-platform-android = { path = "crates/stuk-platform-android" }
+stuk-platform-ios = { path = "crates/stuk-platform-ios" }
+stuk-platform-web = { path = "crates/stuk-platform-web" }
 stuk-accessibility = { path = "crates/stuk-accessibility" }
 stuk-settings = { path = "crates/stuk-settings" }
 stuk-manifest = { path = "crates/stuk-manifest" }

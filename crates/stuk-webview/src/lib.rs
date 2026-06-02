@@ -1,13 +1,15 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
-    collections::BTreeSet,
-    io,
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    thread::{self, JoinHandle},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use stuk::prelude::*;
@@ -29,7 +31,7 @@ use x11rb::{
     rust_connection::RustConnection,
 };
 
-pub use stuk_platform::WindowChrome;
+pub use stuk_platform::{WindowBackgroundEffect, WindowChrome, WindowRegion, WindowRegions};
 pub use stuk_style::Material;
 pub use stuk_web_runtime::{
     RuntimeConfig, RuntimeEngine, RuntimeError, RuntimeInfo, RuntimeInstallProgress,
@@ -79,8 +81,11 @@ pub struct WebViewConfig {
     pub material: Material,
     pub chrome: WindowChrome,
     pub transparent: bool,
+    pub background_effect: WindowBackgroundEffect,
+    pub regions: WindowRegions,
     pub security: WebViewSecurity,
     pub runtime: RuntimeConfig,
+    pub bridge: BridgeRegistry,
 }
 
 impl Default for WebViewConfig {
@@ -93,8 +98,11 @@ impl Default for WebViewConfig {
             material: Material::Maris,
             chrome: WindowChrome::System,
             transparent: true,
+            background_effect: WindowBackgroundEffect::None,
+            regions: WindowRegions::default(),
             security: WebViewSecurity::default(),
             runtime: RuntimeConfig::default(),
+            bridge: BridgeRegistry::default(),
         }
     }
 }
@@ -103,6 +111,7 @@ impl Default for WebViewConfig {
 pub struct WebViewSecurity {
     pub remote_content: bool,
     pub allowed_origins: Vec<String>,
+    pub allowed_bridge_permissions: Vec<String>,
     pub devtools: WebViewDevtools,
     pub allow_eval: bool,
     pub allow_node: bool,
@@ -114,12 +123,30 @@ impl Default for WebViewSecurity {
         Self {
             remote_content: false,
             allowed_origins: Vec::new(),
+            allowed_bridge_permissions: Vec::new(),
             devtools: WebViewDevtools::DevOnly,
             allow_eval: false,
             allow_node: false,
             csp: "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
                 .to_string(),
         }
+    }
+}
+
+impl WebViewSecurity {
+    pub fn allow_origin(mut self, origin: impl Into<String>) -> Self {
+        self.allowed_origins.push(origin.into());
+        self
+    }
+
+    pub fn allow_bridge_permission(mut self, permission: impl Into<String>) -> Self {
+        self.allowed_bridge_permissions.push(permission.into());
+        self
+    }
+
+    pub fn remote_content(mut self, enabled: bool) -> Self {
+        self.remote_content = enabled;
+        self
     }
 }
 
@@ -133,10 +160,12 @@ pub enum WebViewDevtools {
 #[derive(Clone, Debug)]
 pub struct WebViewWindow {
     pub config: WebViewConfig,
+    bridge_handlers: BridgeHandlers,
 }
 
 pub struct WebViewProcess {
     child: Child,
+    bridge_thread: Option<JoinHandle<()>>,
 }
 
 impl WebViewProcess {
@@ -145,7 +174,11 @@ impl WebViewProcess {
     }
 
     pub fn wait(mut self) -> io::Result<ExitStatus> {
-        self.child.wait()
+        let status = self.child.wait();
+        if let Some(thread) = self.bridge_thread.take() {
+            let _ = thread.join();
+        }
+        status
     }
 }
 
@@ -153,6 +186,7 @@ impl WebViewWindow {
     pub fn new() -> Self {
         Self {
             config: WebViewConfig::default(),
+            bridge_handlers: BridgeHandlers::default(),
         }
     }
 
@@ -183,11 +217,47 @@ impl WebViewWindow {
 
     pub fn transparent(mut self, transparent: bool) -> Self {
         self.config.transparent = transparent;
+        if !transparent {
+            self.config.background_effect = WindowBackgroundEffect::None;
+            self.config.regions.blur = None;
+        }
         self
     }
 
     pub fn opaque(mut self) -> Self {
         self.config.transparent = false;
+        self.config.background_effect = WindowBackgroundEffect::None;
+        self.config.regions.blur = None;
+        self
+    }
+
+    pub fn glass(mut self) -> Self {
+        self.config.material = Material::Window;
+        self.config.transparent = true;
+        self.config.background_effect = WindowBackgroundEffect::Blur;
+        self
+    }
+
+    pub fn background_effect(mut self, effect: WindowBackgroundEffect) -> Self {
+        self.config.background_effect = effect;
+        if effect.requires_transparency() {
+            self.config.transparent = true;
+        }
+        self
+    }
+
+    pub fn regions(mut self, regions: WindowRegions) -> Self {
+        self.config.regions = regions;
+        self
+    }
+
+    pub fn blur_region(mut self, region: WindowRegion) -> Self {
+        self.config.regions.blur = Some(region);
+        self
+    }
+
+    pub fn input_region(mut self, region: WindowRegion) -> Self {
+        self.config.regions.input = Some(region);
         self
     }
 
@@ -206,6 +276,64 @@ impl WebViewWindow {
         self
     }
 
+    pub fn bridge(mut self, bridge: BridgeRegistry) -> Self {
+        self.config.bridge = bridge;
+        self
+    }
+
+    pub fn bridge_command(mut self, command_name: impl Into<String>) -> Self {
+        self.config.bridge.register(command_name);
+        self
+    }
+
+    pub fn bridge_handler<F>(mut self, command_name: impl Into<String>, handler: F) -> Self
+    where
+        F: Fn(BridgeCommand) -> BridgeResult + Send + Sync + 'static,
+    {
+        let name = command_name.into();
+        self.config.bridge.register(name.clone());
+        self.bridge_handlers.register(name, handler);
+        self
+    }
+
+    pub fn bridge_descriptor_handler<F>(
+        mut self,
+        descriptor: BridgeCommandDescriptor,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(BridgeCommand) -> BridgeResult + Send + Sync + 'static,
+    {
+        let name = descriptor.name.clone();
+        self.config.bridge.register_descriptor(descriptor);
+        self.bridge_handlers.register(name, handler);
+        self
+    }
+
+    pub fn bridge_handler_async<F, Fut>(self, command_name: impl Into<String>, handler: F) -> Self
+    where
+        F: Fn(BridgeCommand) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = BridgeResult> + Send + 'static,
+    {
+        self.bridge_descriptor_handler_async(BridgeCommandDescriptor::new(command_name), handler)
+    }
+
+    pub fn bridge_descriptor_handler_async<F, Fut>(
+        mut self,
+        descriptor: BridgeCommandDescriptor,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(BridgeCommand) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = BridgeResult> + Send + 'static,
+    {
+        let name = descriptor.name.clone();
+        self.config.bridge.register_descriptor(descriptor);
+        self.bridge_handlers
+            .register(name, move |command| pollster::block_on(handler(command)));
+        self
+    }
+
     pub fn launch(self) -> WebViewResult<WebViewProcess> {
         let runtime = resolve_runtime(&self.config.runtime)?;
         self.launch_with_runtime(runtime)
@@ -216,10 +344,13 @@ impl WebViewWindow {
         self.launch_with_runtime(runtime)
     }
 
-    pub fn launch_with_runtime(self, runtime: RuntimeInfo) -> WebViewResult<WebViewProcess> {
+    pub fn launch_with_runtime(mut self, runtime: RuntimeInfo) -> WebViewResult<WebViewProcess> {
+        self.ensure_default_bridge_handlers();
         let url = self.entry_url()?;
         let runtime_dir = runtime.location.path();
-        if let Some(process) = launch_native_host_process(runtime_dir, &self.config, &url)? {
+        if let Some(process) =
+            launch_native_host_process(runtime_dir, &self.config, &self.bridge_handlers, &url)?
+        {
             return Ok(process);
         }
 
@@ -236,7 +367,13 @@ impl WebViewWindow {
         } else {
             BTreeSet::new()
         };
-        let child = command
+        let bridge_runtime = BridgeRuntime::new(
+            self.bridge_handlers.clone(),
+            self.config.bridge.clone(),
+            self.config.security.clone(),
+        );
+        prepare_bridge_command(&mut command, &self.bridge_handlers);
+        let mut child = command
             .spawn()
             .map_err(|error| WebViewError::CreationFailed {
                 message: error.to_string(),
@@ -244,7 +381,11 @@ impl WebViewWindow {
         if self.config.chrome != WindowChrome::System {
             remove_system_decorations(child.id(), previous_windows);
         }
-        Ok(WebViewProcess { child })
+        let bridge_thread = spawn_bridge_dispatch(&mut child, bridge_runtime);
+        Ok(WebViewProcess {
+            child,
+            bridge_thread,
+        })
     }
 
     fn entry_url(&self) -> WebViewResult<String> {
@@ -274,6 +415,20 @@ impl WebViewWindow {
             })?;
         Ok(format!("file://{}", path.display()))
     }
+
+    fn ensure_default_bridge_handlers(&mut self) {
+        for command in self.config.bridge.commands() {
+            if self.bridge_handlers.contains(&command) {
+                continue;
+            }
+            let command_name = command.clone();
+            self.bridge_handlers.register(command, move |_| {
+                Err(BridgeError::new(format!(
+                    "Bridge command `{command_name}` has no Rust handler"
+                )))
+            });
+        }
+    }
 }
 
 pub fn run_installing_window_from_args(args: &[String]) -> bool {
@@ -298,6 +453,122 @@ pub fn run_native_host_from_args(args: &[String]) -> bool {
         std::process::exit(1);
     }
     true
+}
+
+fn prepare_bridge_command(command: &mut Command, bridge_handlers: &BridgeHandlers) {
+    if bridge_handlers.is_empty() {
+        command.stdin(Stdio::null()).stdout(Stdio::null());
+        return;
+    }
+    command.stdin(Stdio::piped()).stdout(Stdio::piped());
+}
+
+fn spawn_bridge_dispatch(
+    child: &mut Child,
+    bridge_runtime: BridgeRuntime,
+) -> Option<JoinHandle<()>> {
+    if bridge_runtime.is_empty() {
+        return None;
+    }
+    let stdout = child.stdout.take()?;
+    let mut stdin = child.stdin.take()?;
+    Some(thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(std::result::Result::ok) {
+            let Some(request) = BridgeIpcRequest::parse(&line) else {
+                continue;
+            };
+            let response = bridge_runtime.dispatch(request.command);
+            let line = BridgeIpcResponse::from_result(request.browser_id, request.id, response)
+                .serialize();
+            if writeln!(stdin, "{line}").is_err() {
+                break;
+            }
+            let _ = stdin.flush();
+        }
+    }))
+}
+
+#[derive(Debug)]
+struct BridgeIpcRequest {
+    browser_id: String,
+    id: String,
+    command: BridgeCommand,
+}
+
+impl BridgeIpcRequest {
+    fn parse(line: &str) -> Option<Self> {
+        let parts = line.splitn(6, '\t').collect::<Vec<_>>();
+        if parts.first().copied()? != "STUK_BRIDGE_REQUEST" {
+            return None;
+        }
+        if parts.len() == 5 {
+            let params = serde_json::from_str(parts[4]).ok()?;
+            return Some(Self {
+                browser_id: parts[1].to_string(),
+                id: parts[2].to_string(),
+                command: BridgeCommand {
+                    name: parts[3].to_string(),
+                    params,
+                    origin: None,
+                },
+            });
+        }
+        if parts.len() != 6 {
+            return None;
+        }
+        let params = serde_json::from_str(parts[5]).ok()?;
+        let origin = if parts[3].is_empty() {
+            None
+        } else {
+            Some(parts[3].to_string())
+        };
+        Some(Self {
+            browser_id: parts[1].to_string(),
+            id: parts[2].to_string(),
+            command: BridgeCommand {
+                name: parts[4].to_string(),
+                params,
+                origin,
+            },
+        })
+    }
+}
+
+#[derive(Debug)]
+struct BridgeIpcResponse {
+    browser_id: String,
+    id: String,
+    ok: bool,
+    payload: serde_json::Value,
+}
+
+impl BridgeIpcResponse {
+    fn from_result(browser_id: String, id: String, result: BridgeResult) -> Self {
+        match result {
+            Ok(response) => Self {
+                browser_id,
+                id,
+                ok: true,
+                payload: response.result,
+            },
+            Err(error) => Self {
+                browser_id,
+                id,
+                ok: false,
+                payload: serde_json::json!({ "message": error.message }),
+            },
+        }
+    }
+
+    fn serialize(&self) -> String {
+        let status = if self.ok { "ok" } else { "error" };
+        let payload = serde_json::to_string(&self.payload).unwrap_or_else(|_| "null".to_string());
+        format!(
+            "STUK_BRIDGE_RESPONSE\t{}\t{}\t{status}\t{payload}",
+            self.browser_id, self.id
+        )
+    }
 }
 
 pub fn resolve_or_install_runtime(
@@ -480,6 +751,7 @@ fn read_install_status(path: &Path) -> Option<InstallStatus> {
 fn launch_native_host_process(
     runtime_dir: &Path,
     config: &WebViewConfig,
+    bridge_handlers: &BridgeHandlers,
     url: &str,
 ) -> WebViewResult<Option<WebViewProcess>> {
     #[cfg(target_os = "linux")]
@@ -487,8 +759,14 @@ fn launch_native_host_process(
         let host_binary = ensure_stuk_cef_host(runtime_dir)
             .map_err(|message| WebViewError::CreationFailed { message })?;
         if !use_x11_embedded_compat() {
-            return launch_wayland_cef_host_process(runtime_dir, &host_binary, config, url)
-                .map(Some);
+            return launch_wayland_cef_host_process(
+                runtime_dir,
+                &host_binary,
+                config,
+                bridge_handlers,
+                url,
+            )
+            .map(Some);
         }
 
         let host_config_path =
@@ -501,7 +779,9 @@ fn launch_native_host_process(
             "width": 800,
             "height": 600,
             "transparent": config.transparent,
+            "background_effect": config.background_effect.as_str(),
             "chrome": config.chrome.as_str(),
+            "bridge_commands": config.bridge.commands(),
         });
         std::fs::write(&host_config_path, body.to_string()).map_err(|error| {
             WebViewError::CreationFailed {
@@ -511,17 +791,31 @@ fn launch_native_host_process(
         let exe = std::env::current_exe().map_err(|error| WebViewError::CreationFailed {
             message: error.to_string(),
         })?;
-        let child = Command::new(exe)
+        let mut command = Command::new(exe);
+        command
             .arg(NATIVE_HOST_ARG)
             .arg(&host_config_path)
             .env("WINIT_UNIX_BACKEND", "x11")
             .env_remove("WAYLAND_DISPLAY")
-            .stdin(Stdio::null())
+            .stderr(Stdio::inherit());
+        prepare_bridge_command(&mut command, bridge_handlers);
+        let mut child = command
             .spawn()
             .map_err(|error| WebViewError::CreationFailed {
                 message: format!("failed to launch webview native host: {error}"),
             })?;
-        return Ok(Some(WebViewProcess { child }));
+        let bridge_thread = spawn_bridge_dispatch(
+            &mut child,
+            BridgeRuntime::new(
+                bridge_handlers.clone(),
+                config.bridge.clone(),
+                config.security.clone(),
+            ),
+        );
+        return Ok(Some(WebViewProcess {
+            child,
+            bridge_thread,
+        }));
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -548,6 +842,7 @@ fn launch_wayland_cef_host_process(
     runtime_dir: &Path,
     host_binary: &Path,
     config: &WebViewConfig,
+    bridge_handlers: &BridgeHandlers,
     url: &str,
 ) -> WebViewResult<WebViewProcess> {
     let release_dir = runtime_dir.join("Release");
@@ -563,6 +858,14 @@ fn launch_wayland_cef_host_process(
         .arg("--stuk-ozone-platform=wayland")
         .arg(format!("--stuk-width={}", 800))
         .arg(format!("--stuk-height={}", 600))
+        .arg(format!(
+            "--stuk-background-effect={}",
+            config.background_effect.as_str()
+        ))
+        .arg(format!(
+            "--stuk-bridge-commands={}",
+            config.bridge.commands().join(",")
+        ))
         .arg(format!("--root-cache-path={}", cache_dir.display()))
         .arg(format!(
             "--cache-path={}",
@@ -588,12 +891,24 @@ fn launch_wayland_cef_host_process(
     if config.chrome != WindowChrome::System {
         command.arg("--stuk-frameless");
     }
-    let child = command
+    prepare_bridge_command(&mut command, bridge_handlers);
+    let mut child = command
         .spawn()
         .map_err(|error| WebViewError::CreationFailed {
             message: format!("failed to launch Wayland CEF host: {error}"),
         })?;
-    Ok(WebViewProcess { child })
+    let bridge_thread = spawn_bridge_dispatch(
+        &mut child,
+        BridgeRuntime::new(
+            bridge_handlers.clone(),
+            config.bridge.clone(),
+            config.security.clone(),
+        ),
+    );
+    Ok(WebViewProcess {
+        child,
+        bridge_thread,
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -751,11 +1066,27 @@ fn run_native_host(config_path: PathBuf) -> std::result::Result<(), String> {
         .get("transparent")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(true);
+    let background_effect = config
+        .get("background_effect")
+        .and_then(serde_json::Value::as_str)
+        .and_then(WindowBackgroundEffect::parse)
+        .unwrap_or(WindowBackgroundEffect::None);
     let chrome = config
         .get("chrome")
         .and_then(serde_json::Value::as_str)
         .and_then(WindowChrome::parse)
         .unwrap_or(WindowChrome::System);
+    let bridge_commands = config
+        .get("bridge_commands")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let _ = std::fs::remove_file(config_path);
 
     NativeWebViewHost {
@@ -766,7 +1097,9 @@ fn run_native_host(config_path: PathBuf) -> std::result::Result<(), String> {
         width,
         height,
         transparent,
+        background_effect,
         chrome,
+        bridge_commands,
         window: None,
         child: None,
         child_window: None,
@@ -786,7 +1119,9 @@ struct NativeWebViewHost {
     width: u32,
     height: u32,
     transparent: bool,
+    background_effect: WindowBackgroundEffect,
     chrome: WindowChrome,
+    bridge_commands: Vec<String>,
     window: Option<Arc<dyn WinitWindow>>,
     child: Option<Child>,
     child_window: Option<X11Window>,
@@ -981,6 +1316,14 @@ impl NativeWebViewHost {
             .arg(format!("--stuk-y={y}"))
             .arg(format!("--stuk-width={}", width.max(1)))
             .arg(format!("--stuk-height={}", height.max(1)))
+            .arg(format!(
+                "--stuk-background-effect={}",
+                self.background_effect.as_str()
+            ))
+            .arg(format!(
+                "--stuk-bridge-commands={}",
+                self.bridge_commands.join(",")
+            ))
             .arg(format!("--root-cache-path={}", cache_dir.display()))
             .arg(format!(
                 "--cache-path={}",
@@ -999,6 +1342,11 @@ impl NativeWebViewHost {
                 .arg("--transparent-painting-enabled")
                 .arg("--default-background-color=0x00000000");
         }
+        if !self.bridge_commands.is_empty() {
+            command.stdin(Stdio::piped()).stdout(Stdio::piped());
+        } else {
+            command.stdin(Stdio::null()).stdout(Stdio::null());
+        }
         let child = match command.spawn() {
             Ok(child) => child,
             Err(error) => {
@@ -1008,6 +1356,11 @@ impl NativeWebViewHost {
             }
         };
         self.child = Some(child);
+        if !self.bridge_commands.is_empty()
+            && let Some(child) = self.child.as_mut()
+        {
+            spawn_native_host_bridge_proxy(child);
+        }
         for _ in 0..100 {
             if let Some(window_id) = find_x11_child(parent) {
                 self.child_window = Some(window_id);
@@ -1138,6 +1491,33 @@ fn centered_window_position(
     let x = monitor_position.x + (monitor_size.width as i32 - physical_width).max(0) / 2;
     let y = monitor_position.y + (monitor_size.height as i32 - physical_height).max(0) / 2;
     Some(PhysicalPosition::new(x, y))
+}
+
+fn spawn_native_host_bridge_proxy(child: &mut Child) {
+    if let Some(stdout) = child.stdout.take() {
+        thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            let mut output = io::stdout();
+            for line in reader.lines().map_while(std::result::Result::ok) {
+                if writeln!(output, "{line}").is_err() {
+                    break;
+                }
+                let _ = output.flush();
+            }
+        });
+    }
+
+    if let Some(mut stdin) = child.stdin.take() {
+        thread::spawn(move || {
+            let input = io::stdin();
+            for line in input.lock().lines().map_while(std::result::Result::ok) {
+                if writeln!(stdin, "{line}").is_err() {
+                    break;
+                }
+                let _ = stdin.flush();
+            }
+        });
+    }
 }
 
 fn webview_titlebar_height(chrome: WindowChrome, scale_factor: f64) -> u32 {
@@ -1485,6 +1865,10 @@ fn runtime_command(
             .arg("--disable-gpu")
             .arg("--hide-controls")
             .arg("--hide-overlays")
+            .arg(format!(
+                "--stuk-bridge-commands={}",
+                config.bridge.commands().join(",")
+            ))
             .arg(format!("--root-cache-path={}", cache_dir.display()))
             .arg(format!(
                 "--cache-path={}",
@@ -1691,6 +2075,7 @@ fn find_new_x11_window(previous_windows: &BTreeSet<String>) -> Option<String> {
 pub struct BridgeCommand {
     pub name: String,
     pub params: serde_json::Value,
+    pub origin: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1698,9 +2083,271 @@ pub struct BridgeResponse {
     pub result: serde_json::Value,
 }
 
+impl BridgeResponse {
+    pub fn json(result: serde_json::Value) -> Self {
+        Self { result }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BridgeError {
+    pub message: String,
+}
+
+impl BridgeError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+pub type BridgeResult = std::result::Result<BridgeResponse, BridgeError>;
+type BridgeHandler = Arc<dyn Fn(BridgeCommand) -> BridgeResult + Send + Sync>;
+
+#[derive(Clone, Default)]
+pub struct BridgeHandlers {
+    handlers: BTreeMap<String, BridgeHandler>,
+}
+
+impl std::fmt::Debug for BridgeHandlers {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BridgeHandlers")
+            .field("commands", &self.commands())
+            .finish()
+    }
+}
+
+impl BridgeHandlers {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register<F>(&mut self, command_name: impl Into<String>, handler: F)
+    where
+        F: Fn(BridgeCommand) -> BridgeResult + Send + Sync + 'static,
+    {
+        self.handlers.insert(command_name.into(), Arc::new(handler));
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.handlers.is_empty()
+    }
+
+    pub fn contains(&self, command_name: &str) -> bool {
+        self.handlers.contains_key(command_name)
+    }
+
+    pub fn commands(&self) -> Vec<String> {
+        self.handlers.keys().cloned().collect()
+    }
+
+    fn dispatch(&self, command: BridgeCommand) -> BridgeResult {
+        let Some(handler) = self.handlers.get(&command.name) else {
+            return Err(BridgeError::new(format!(
+                "Bridge command `{}` is not registered",
+                command.name
+            )));
+        };
+        handler(command)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BridgeRuntime {
+    handlers: BridgeHandlers,
+    registry: BridgeRegistry,
+    security: WebViewSecurity,
+}
+
+impl BridgeRuntime {
+    fn new(handlers: BridgeHandlers, registry: BridgeRegistry, security: WebViewSecurity) -> Self {
+        Self {
+            handlers,
+            registry,
+            security,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.handlers.is_empty()
+    }
+
+    fn dispatch(&self, command: BridgeCommand) -> BridgeResult {
+        let descriptor = self.registry.descriptor(&command.name);
+        self.validate_permissions(&command, descriptor)?;
+        self.validate_targets(&command, descriptor)?;
+        self.validate_origin(&command, descriptor)?;
+        self.handlers.dispatch(command)
+    }
+
+    fn validate_targets(
+        &self,
+        command: &BridgeCommand,
+        descriptor: Option<&BridgeCommandDescriptor>,
+    ) -> std::result::Result<(), BridgeError> {
+        let Some(descriptor) = descriptor else {
+            return Ok(());
+        };
+        if descriptor.targets.is_empty() {
+            return Ok(());
+        }
+        let active = current_bridge_targets();
+        if descriptor
+            .targets
+            .iter()
+            .any(|target| active.iter().any(|active| active == target))
+        {
+            return Ok(());
+        }
+        Err(BridgeError::new(format!(
+            "Bridge command `{}` is unavailable on this target",
+            command.name
+        )))
+    }
+
+    fn validate_permissions(
+        &self,
+        command: &BridgeCommand,
+        descriptor: Option<&BridgeCommandDescriptor>,
+    ) -> std::result::Result<(), BridgeError> {
+        let Some(descriptor) = descriptor else {
+            return Ok(());
+        };
+        for permission in &descriptor.permissions {
+            if !self
+                .security
+                .allowed_bridge_permissions
+                .iter()
+                .any(|allowed| allowed == permission || allowed == "*")
+            {
+                return Err(BridgeError::new(format!(
+                    "Bridge command `{}` requires permission `{permission}`",
+                    command.name
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_origin(
+        &self,
+        command: &BridgeCommand,
+        descriptor: Option<&BridgeCommandDescriptor>,
+    ) -> std::result::Result<(), BridgeError> {
+        let Some(origin) = command.origin.as_deref() else {
+            return Ok(());
+        };
+        if is_local_bridge_origin(origin) {
+            return Ok(());
+        }
+
+        let command_origins = descriptor
+            .map(|descriptor| descriptor.allowed_origins.as_slice())
+            .unwrap_or(&[]);
+        if origin_matches_any(origin, command_origins) {
+            return Ok(());
+        }
+
+        if self.security.remote_content
+            && origin_matches_any(origin, self.security.allowed_origins.as_slice())
+        {
+            return Ok(());
+        }
+
+        Err(BridgeError::new(format!(
+            "Bridge command `{}` is not allowed from origin `{origin}`",
+            command.name
+        )))
+    }
+}
+
+fn is_local_bridge_origin(origin: &str) -> bool {
+    origin == "null"
+        || origin == "about:blank"
+        || origin.starts_with("file://")
+        || origin.starts_with("devtools://")
+}
+
+fn origin_matches_any(origin: &str, allowed: &[String]) -> bool {
+    allowed.iter().any(|candidate| {
+        candidate == origin
+            || candidate == "*"
+            || (candidate.ends_with("/*") && origin.starts_with(candidate.trim_end_matches('*')))
+    })
+}
+
+fn current_bridge_targets() -> &'static [&'static str] {
+    #[cfg(target_os = "linux")]
+    {
+        &["desktop", "linux"]
+    }
+    #[cfg(target_os = "windows")]
+    {
+        &["desktop", "windows"]
+    }
+    #[cfg(target_os = "macos")]
+    {
+        &["desktop", "macos"]
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        &["desktop"]
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BridgeCommandDescriptor {
+    pub name: String,
+    pub description: Option<String>,
+    pub params_schema: Option<serde_json::Value>,
+    pub permissions: Vec<String>,
+    pub allowed_origins: Vec<String>,
+    pub targets: Vec<String>,
+}
+
+impl BridgeCommandDescriptor {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            description: None,
+            params_schema: None,
+            permissions: Vec::new(),
+            allowed_origins: Vec::new(),
+            targets: Vec::new(),
+        }
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn params_schema(mut self, schema: serde_json::Value) -> Self {
+        self.params_schema = Some(schema);
+        self
+    }
+
+    pub fn permission(mut self, permission: impl Into<String>) -> Self {
+        self.permissions.push(permission.into());
+        self
+    }
+
+    pub fn allowed_origin(mut self, origin: impl Into<String>) -> Self {
+        self.allowed_origins.push(origin.into());
+        self
+    }
+
+    pub fn target(mut self, target: impl Into<String>) -> Self {
+        self.targets.push(target.into());
+        self
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct BridgeRegistry {
-    commands: Vec<String>,
+    commands: Vec<BridgeCommandDescriptor>,
 }
 
 impl BridgeRegistry {
@@ -1709,18 +2356,98 @@ impl BridgeRegistry {
     }
 
     pub fn register(&mut self, command_name: impl Into<String>) {
-        let name = command_name.into();
-        if !self.commands.contains(&name) {
-            self.commands.push(name);
+        self.register_descriptor(BridgeCommandDescriptor::new(command_name));
+    }
+
+    pub fn register_descriptor(&mut self, command: BridgeCommandDescriptor) {
+        if !self.is_registered(&command.name) {
+            self.commands.push(command);
         }
     }
 
     pub fn is_registered(&self, command_name: &str) -> bool {
-        self.commands.iter().any(|c| c == command_name)
+        self.commands.iter().any(|c| c.name == command_name)
     }
 
-    pub fn commands(&self) -> &[String] {
+    pub fn descriptors(&self) -> &[BridgeCommandDescriptor] {
         &self.commands
+    }
+
+    pub fn descriptor(&self, command_name: &str) -> Option<&BridgeCommandDescriptor> {
+        self.commands
+            .iter()
+            .find(|command| command.name == command_name)
+    }
+
+    pub fn commands(&self) -> Vec<String> {
+        self.commands
+            .iter()
+            .map(|command| command.name.clone())
+            .collect()
+    }
+
+    pub fn capabilities_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "commands": self.commands.iter().map(|command| {
+                serde_json::json!({
+                    "name": &command.name,
+                    "description": &command.description,
+                    "paramsSchema": &command.params_schema,
+                    "permissions": &command.permissions,
+                    "allowedOrigins": &command.allowed_origins,
+                    "targets": &command.targets,
+                })
+            }).collect::<Vec<_>>()
+        })
+    }
+
+    pub fn js_api(&self) -> String {
+        let commands = serde_json::to_string(&self.commands()).unwrap_or_else(|_| "[]".to_string());
+        let capabilities =
+            serde_json::to_string(&self.capabilities_json()).unwrap_or_else(|_| "{}".to_string());
+        format!(
+            r#"(function(){{
+  const commands = new Set({commands});
+  const capabilities = {capabilities};
+  const pending = new Map();
+  let nextId = 1;
+  window.__stukBridgeResolve = function(id, ok, payload) {{
+    const key = String(id);
+    const entry = pending.get(key);
+    if (!entry) return;
+    pending.delete(key);
+    if (ok) {{
+      entry.resolve(payload);
+    }} else {{
+      entry.reject(new Error((payload && payload.message) || "Stuk bridge command failed"));
+    }}
+  }};
+  window.stuk = window.stuk || {{}};
+  window.stuk.bridge = {{
+    __native: true,
+    commands: Array.from(commands),
+    capabilities,
+    invoke(name, params = {{}}) {{
+      if (!commands.has(name)) {{
+        return Promise.reject(new Error(`Stuk bridge command not registered: ${{name}}`));
+      }}
+      const id = String(nextId++);
+      const payload = encodeURIComponent(JSON.stringify(params));
+      const url = `stuk://bridge/${{encodeURIComponent(id)}}?name=${{encodeURIComponent(name)}}&payload=${{payload}}`;
+      return new Promise((resolve, reject) => {{
+        pending.set(id, {{ resolve, reject }});
+        setTimeout(() => {{
+          if (pending.has(id)) {{
+            pending.delete(id);
+            reject(new Error(`Stuk bridge command timed out: ${{name}}`));
+          }}
+        }}, 60000);
+        window.location.href = url;
+      }});
+    }}
+  }};
+}})();"#
+        )
     }
 }
 

@@ -3,7 +3,10 @@ use std::{cell::RefCell, collections::BTreeMap, path::PathBuf};
 use stuk_actions::ActionDescriptor;
 use stuk_style::Material;
 
-use crate::{ClipboardData, PlatformCapabilities, PlatformError, WindowChrome, WindowOptions};
+use crate::{
+    BackendDescriptor, ClipboardData, PlatformCapabilities, PlatformError, WindowChrome,
+    WindowOptions,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WindowId(u64);
@@ -142,10 +145,15 @@ pub trait Platform {
     fn write_clipboard(&self, data: ClipboardData);
     fn open_file_dialog(&self, options: FileDialogOptions) -> FileDialogResult;
     fn platform_capabilities(&self) -> PlatformCapabilities;
+
+    fn backend(&self) -> BackendDescriptor {
+        BackendDescriptor::generic()
+    }
 }
 
 #[derive(Debug)]
 pub struct GenericPlatform {
+    backend: BackendDescriptor,
     capabilities: PlatformCapabilities,
     next_window_id: u64,
     windows: BTreeMap<WindowId, GenericWindow>,
@@ -156,20 +164,25 @@ pub struct GenericPlatform {
 
 impl GenericPlatform {
     pub fn new() -> Self {
+        Self::with_backend(BackendDescriptor::generic())
+    }
+
+    pub fn with_capabilities(capabilities: PlatformCapabilities) -> Self {
+        Self::with_backend(BackendDescriptor {
+            capabilities,
+            ..BackendDescriptor::generic()
+        })
+    }
+
+    pub fn with_backend(backend: BackendDescriptor) -> Self {
         Self {
-            capabilities: PlatformCapabilities::generic(),
+            capabilities: backend.capabilities,
+            backend,
             next_window_id: 1,
             windows: BTreeMap::new(),
             actions: Vec::new(),
             clipboard: RefCell::new(None),
             next_file_dialog_result: RefCell::new(None),
-        }
-    }
-
-    pub fn with_capabilities(capabilities: PlatformCapabilities) -> Self {
-        Self {
-            capabilities,
-            ..Self::new()
         }
     }
 
@@ -272,6 +285,10 @@ impl Platform for GenericPlatform {
 
     fn platform_capabilities(&self) -> PlatformCapabilities {
         self.capabilities
+    }
+
+    fn backend(&self) -> BackendDescriptor {
+        self.backend.clone()
     }
 }
 

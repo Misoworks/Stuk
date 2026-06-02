@@ -1,8 +1,9 @@
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform, MaterialEffect,
-    MaterialResolution, MaterialResolver, Platform, PlatformCapabilities, PlatformError,
-    WindowChrome, WindowHandle, WindowId, WindowOptions,
+    BackendDescriptor, BackendKind, BackendStatus, ClipboardData, FileDialogOptions,
+    FileDialogResult, GenericPlatform, MaterialEffect, MaterialResolution, MaterialResolver,
+    Platform, PlatformCapabilities, PlatformError, PlatformOs, RuntimeTarget, WindowChrome,
+    WindowHandle, WindowId, WindowOptions,
 };
 use stuk_style::{Material, Theme};
 
@@ -19,7 +20,7 @@ impl MacosPlatform {
 
     pub fn with_vibrancy(vibrancy: MacosVibrancy) -> Self {
         Self {
-            inner: GenericPlatform::with_capabilities(macos_capabilities(vibrancy)),
+            inner: GenericPlatform::with_backend(macos_backend(vibrancy)),
             vibrancy,
         }
     }
@@ -124,20 +125,24 @@ impl Platform for MacosPlatform {
     fn platform_capabilities(&self) -> PlatformCapabilities {
         self.inner.platform_capabilities()
     }
+
+    fn backend(&self) -> BackendDescriptor {
+        self.inner.backend()
+    }
 }
 
 pub fn macos_capabilities(vibrancy: MacosVibrancy) -> PlatformCapabilities {
-    PlatformCapabilities {
-        live_blur: vibrancy != MacosVibrancy::Disabled,
-        transparent_windows: vibrancy != MacosVibrancy::Disabled,
-        wallpaper_material: true,
-        shell_tabs: false,
-        command_palette: false,
-        workspace_sessions: false,
-        native_notifications: true,
-        system_dark_mode: true,
-        high_contrast: true,
-    }
+    PlatformCapabilities::desktop_macos(vibrancy != MacosVibrancy::Disabled)
+}
+
+pub fn macos_backend(vibrancy: MacosVibrancy) -> BackendDescriptor {
+    BackendDescriptor::new(
+        "macos",
+        BackendKind::NativeDesktop,
+        RuntimeTarget::desktop(PlatformOs::Macos),
+        BackendStatus::Available,
+        macos_capabilities(vibrancy),
+    )
 }
 
 #[cfg(test)]

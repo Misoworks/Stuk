@@ -1,8 +1,9 @@
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    ClipboardData, FileDialogOptions, FileDialogResult, GenericPlatform, MaterialEffect,
-    MaterialResolution, MaterialResolver, Platform, PlatformCapabilities, PlatformError,
-    WindowChrome, WindowHandle, WindowId, WindowOptions,
+    BackendDescriptor, BackendKind, BackendStatus, ClipboardData, FileDialogOptions,
+    FileDialogResult, GenericPlatform, MaterialEffect, MaterialResolution, MaterialResolver,
+    Platform, PlatformCapabilities, PlatformError, PlatformOs, RuntimeTarget, WindowChrome,
+    WindowHandle, WindowId, WindowOptions,
 };
 pub use stuk_platform::{SplitHint, StaccatoSession};
 use stuk_style::{Material, Theme};
@@ -15,7 +16,7 @@ pub struct StaccatoPlatform {
 impl StaccatoPlatform {
     pub fn new() -> Self {
         Self {
-            inner: GenericPlatform::with_capabilities(staccato_capabilities()),
+            inner: GenericPlatform::with_backend(staccato_backend()),
         }
     }
 
@@ -95,13 +96,25 @@ impl Platform for StaccatoPlatform {
     fn platform_capabilities(&self) -> PlatformCapabilities {
         self.inner.platform_capabilities()
     }
+
+    fn backend(&self) -> BackendDescriptor {
+        self.inner.backend()
+    }
 }
 
 pub fn staccato_capabilities() -> PlatformCapabilities {
     PlatformCapabilities {
+        native_windows: true,
+        web_surface: false,
+        mobile_shell: false,
+        native_bridge: true,
         live_blur: true,
         transparent_windows: true,
         wallpaper_material: true,
+        touch_input: false,
+        pointer_input: true,
+        keyboard_input: true,
+        file_dialogs: true,
         shell_tabs: true,
         command_palette: true,
         workspace_sessions: true,
@@ -109,6 +122,16 @@ pub fn staccato_capabilities() -> PlatformCapabilities {
         system_dark_mode: true,
         high_contrast: true,
     }
+}
+
+pub fn staccato_backend() -> BackendDescriptor {
+    BackendDescriptor::new(
+        "staccato",
+        BackendKind::NativeDesktop,
+        RuntimeTarget::desktop(PlatformOs::Linux),
+        BackendStatus::Preview,
+        staccato_capabilities(),
+    )
 }
 
 #[cfg(test)]

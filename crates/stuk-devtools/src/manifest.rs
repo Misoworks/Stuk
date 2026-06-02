@@ -8,6 +8,7 @@ use crate::PreviewDescriptor;
 pub struct ManifestInspection {
     pub ok: bool,
     pub app: AppInspection,
+    pub targets: Vec<TargetInspection>,
     pub windows: Vec<WindowInspection>,
     pub actions: Vec<ActionInspection>,
     pub settings_count: usize,
@@ -22,6 +23,12 @@ pub struct AppInspection {
     pub name: String,
     pub version: String,
     pub icon: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TargetInspection {
+    pub name: String,
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +81,14 @@ impl ManifestInspection {
                 version: manifest.app.version.clone(),
                 icon: manifest.app.icon.clone(),
             },
+            targets: manifest
+                .targets
+                .iter()
+                .map(|(name, enabled)| TargetInspection {
+                    name: name.clone(),
+                    enabled: *enabled,
+                })
+                .collect(),
             windows: manifest
                 .window
                 .iter()
@@ -113,6 +128,10 @@ impl ManifestInspection {
         output.push_str(&format!("  version: {}\n", self.app.version));
         if let Some(icon) = &self.app.icon {
             output.push_str(&format!("  icon: {icon}\n"));
+        }
+        output.push_str(&format!("Targets: {}\n", self.targets.len()));
+        for target in &self.targets {
+            output.push_str(&format!("  {}: {}\n", target.name, target.enabled));
         }
         output.push_str(&format!("Windows: {}\n", self.windows.len()));
         for window in &self.windows {
@@ -159,7 +178,14 @@ impl ManifestInspection {
             escape_json(&self.app.version),
             optional_json_string(self.app.icon.as_deref())
         );
-        output.push_str("\"windows\":[");
+        output.push_str("\"targets\":[");
+        for (index, target) in self.targets.iter().enumerate() {
+            if index > 0 {
+                output.push(',');
+            }
+            output.push_str(&target.to_json());
+        }
+        output.push_str("],\"windows\":[");
         for (index, window) in self.windows.iter().enumerate() {
             if index > 0 {
                 output.push(',');
@@ -211,6 +237,16 @@ impl ManifestInspection {
         }
 
         previews
+    }
+}
+
+impl TargetInspection {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":\"{}\",\"enabled\":{}}}",
+            escape_json(&self.name),
+            self.enabled
+        )
     }
 }
 
