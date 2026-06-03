@@ -9,3 +9,12 @@ license.workspace = true
 stuk-actions.workspace = true
 stuk-platform.workspace = true
 stuk-style.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+global-hotkey.workspace = true
+image.workspace = true
+keyring-core.workspace = true
+serde_json.workspace = true
+tray-icon = { workspace = true, features = ["common-controls-v6"] }
+windows-native-keyring-store.workspace = true
+windows-registry.workspace = true

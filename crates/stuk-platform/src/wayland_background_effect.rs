@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use winit::window::Window;
 
-use crate::{WindowBackgroundEffect, WindowOptions, WindowRegion};
+use crate::WindowOptions;
+#[cfg(target_os = "linux")]
+use crate::{WindowBackgroundEffect, WindowRegion};
 
 #[cfg(target_os = "linux")]
 use std::ffi::{c_char, c_uint, c_void};
@@ -67,6 +69,13 @@ pub struct WaylandEffect {
 #[cfg(not(target_os = "linux"))]
 #[derive(Debug)]
 pub struct WaylandEffect;
+
+#[cfg(not(target_os = "linux"))]
+impl WaylandEffect {
+    pub fn update(&self, _options: &WindowOptions, _width: i32, _height: i32) -> bool {
+        false
+    }
+}
 
 #[cfg(target_os = "linux")]
 impl Drop for WaylandEffect {

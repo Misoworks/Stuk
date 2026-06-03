@@ -6,6 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+ashpd.workspace = true
+dbus-secret-service-keyring-store.workspace = true
+futures-util.workspace = true
+keyring-core.workspace = true
+ksni.workspace = true
+serde_json.workspace = true
 stuk-actions.workspace = true
 stuk-platform.workspace = true
 stuk-style.workspace = true
+tokio.workspace = true

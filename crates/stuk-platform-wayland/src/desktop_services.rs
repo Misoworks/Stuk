@@ -1,13 +1,136 @@
-use std::{collections::BTreeSet, env, fs, io, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex, OnceLock},
+    thread::{self, JoinHandle},
+};
 
-use stuk_platform::{AutostartEntry, DeepLinkRegistration, NativeMessagingHost};
+use futures_util::StreamExt;
+use ksni::blocking::TrayMethods;
+use stuk_actions::Shortcut;
+use stuk_platform::{
+    AutostartEntry, CredentialKey, CredentialSecret, DeepLinkRegistration,
+    GlobalShortcutActivation, GlobalShortcutRegistration, NativeMessagingHost, PlatformEvent,
+    SingleInstancePolicy, TrayActivation, TrayIcon, TrayMenuItem,
+};
 
-#[derive(Debug, Default)]
-pub(crate) struct LinuxDesktopServices;
+use crate::{
+    desktop_files::{
+        data_home, desktop_entry, register_deep_links, register_native_messaging_host,
+        sanitize_desktop_id, write_autostart_entry, write_file,
+    },
+    single_instance::{SingleInstanceGuard, SingleInstanceSetup},
+};
+
+pub(super) type EventQueue = Arc<Mutex<Vec<PlatformEvent>>>;
+
+pub(crate) struct LinuxDesktopServices {
+    events: EventQueue,
+    tray: Mutex<Option<TrayRuntime>>,
+    shortcuts: Mutex<BTreeMap<String, ShortcutRuntime>>,
+    single_instance: Mutex<Option<SingleInstanceGuard>>,
+}
+
+impl std::fmt::Debug for LinuxDesktopServices {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LinuxDesktopServices")
+            .field(
+                "events",
+                &self.events.lock().map(|events| events.len()).ok(),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for LinuxDesktopServices {
+    fn default() -> Self {
+        Self {
+            events: Arc::new(Mutex::new(Vec::new())),
+            tray: Mutex::new(None),
+            shortcuts: Mutex::new(BTreeMap::new()),
+            single_instance: Mutex::new(None),
+        }
+    }
+}
 
 impl LinuxDesktopServices {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn take_events(&self) -> Vec<PlatformEvent> {
+        self.events
+            .lock()
+            .map(|mut events| events.drain(..).collect())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn set_tray_icon(&self, icon: &TrayIcon) -> bool {
+        let tray = LinuxTray {
+            icon: icon.clone(),
+            events: Arc::clone(&self.events),
+        };
+        let handle = match tray.assume_sni_available(true).spawn() {
+            Ok(handle) => handle,
+            Err(_) => return false,
+        };
+        let Ok(mut active) = self.tray.lock() else {
+            return false;
+        };
+        if let Some(existing) = active.take() {
+            existing.shutdown();
+        }
+        *active = Some(TrayRuntime { handle });
+        true
+    }
+
+    pub(crate) fn remove_tray_icon(&self, id: &str) -> bool {
+        let Ok(mut active) = self.tray.lock() else {
+            return false;
+        };
+        let Some(existing) = active.take() else {
+            return false;
+        };
+        if existing.id() != id {
+            *active = Some(existing);
+            return false;
+        }
+        existing.shutdown();
+        true
+    }
+
     pub(crate) fn set_autostart(&self, entry: &AutostartEntry) -> bool {
         write_autostart_entry(entry).is_ok()
+    }
+
+    pub(crate) fn register_global_shortcut(
+        &self,
+        registration: &GlobalShortcutRegistration,
+    ) -> bool {
+        let registration = registration.clone();
+        let events = Arc::clone(&self.events);
+        let shortcut_id = registration.id.clone();
+        let thread = thread::spawn(move || {
+            let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            let _ = runtime.block_on(run_portal_shortcut(registration, events));
+        });
+        let Ok(mut shortcuts) = self.shortcuts.lock() else {
+            return false;
+        };
+        shortcuts.insert(shortcut_id, ShortcutRuntime { thread });
+        true
+    }
+
+    pub(crate) fn unregister_global_shortcut(&self, id: &str) -> bool {
+        self.shortcuts
+            .lock()
+            .map(|mut shortcuts| shortcuts.remove(id).is_some())
+            .unwrap_or(false)
     }
 
     pub(crate) fn register_deep_links(&self, registration: &DeepLinkRegistration) -> bool {
@@ -17,209 +140,297 @@ impl LinuxDesktopServices {
     pub(crate) fn register_native_messaging_host(&self, host: &NativeMessagingHost) -> bool {
         register_native_messaging_host(host).is_ok()
     }
-}
 
-fn write_autostart_entry(entry: &AutostartEntry) -> io::Result<()> {
-    let path = config_home()?
-        .join("autostart")
-        .join(format!("{}.desktop", sanitize_desktop_id(&entry.id)));
-    if !entry.enabled {
-        match fs::remove_file(path) {
-            Ok(()) => return Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error),
+    pub(crate) fn set_single_instance_policy(&self, policy: SingleInstancePolicy) -> bool {
+        let Ok(mut active) = self.single_instance.lock() else {
+            return false;
+        };
+        *active = None;
+        if policy == SingleInstancePolicy::AllowMultiple {
+            return true;
+        }
+        match SingleInstanceGuard::acquire(policy, Arc::clone(&self.events)) {
+            SingleInstanceSetup::Primary(guard) => {
+                *active = Some(guard);
+                true
+            }
+            SingleInstanceSetup::AlreadyRunning => false,
+            SingleInstanceSetup::Failed => false,
         }
     }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(
-        path,
-        desktop_entry(&entry.id, &entry.name, &entry.command, &[]),
-    )
-}
 
-fn register_deep_links(registration: &DeepLinkRegistration) -> io::Result<()> {
-    let desktop_id = format!("{}.desktop", sanitize_desktop_id(&registration.id));
-    let path = config_home()?.join("mimeapps.list");
-    let mut content = fs::read_to_string(&path).unwrap_or_default();
-    for scheme in &registration.schemes {
-        let scheme = sanitize_scheme(scheme);
-        if !scheme.is_empty() {
-            content = set_mime_default(&content, &scheme, &desktop_id);
+    pub(crate) fn write_credential(&self, key: &CredentialKey, secret: CredentialSecret) -> bool {
+        let Some(entry) = credential_entry(key) else {
+            return false;
+        };
+        match secret {
+            CredentialSecret::Text(text) => entry.set_password(&text).is_ok(),
+            CredentialSecret::Bytes(bytes) => entry.set_secret(&bytes).is_ok(),
         }
     }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, content)
-}
 
-fn register_native_messaging_host(host: &NativeMessagingHost) -> io::Result<()> {
-    let name = sanitize_native_host_name(&host.id);
-    let chrome_manifest = native_messaging_manifest(host, &name, "allowed_origins");
-    for browser in ["google-chrome", "chromium", "BraveSoftware/Brave-Browser"] {
-        let path = config_home()?
-            .join(browser)
-            .join("NativeMessagingHosts")
-            .join(format!("{name}.json"));
-        write_file(path, &chrome_manifest)?;
+    pub(crate) fn read_credential(&self, key: &CredentialKey) -> Option<CredentialSecret> {
+        let entry = credential_entry(key)?;
+        entry.get_secret().ok().map(secret_from_bytes)
     }
 
-    let firefox_manifest = native_messaging_manifest(host, &name, "allowed_extensions");
-    write_file(
-        home_dir()?
-            .join(".mozilla/native-messaging-hosts")
-            .join(format!("{name}.json")),
-        &firefox_manifest,
-    )
-}
-
-fn write_file(path: PathBuf, contents: &str) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+    pub(crate) fn delete_credential(&self, key: &CredentialKey) -> bool {
+        credential_entry(key).is_some_and(|entry| entry.delete_credential().is_ok())
     }
-    fs::write(path, contents)
 }
 
-fn desktop_entry(id: &str, name: &str, command: &str, schemes: &[String]) -> String {
-    let mime_types = schemes
-        .iter()
-        .map(|scheme| format!("x-scheme-handler/{}", sanitize_scheme(scheme)))
-        .collect::<Vec<_>>();
-    let mime_line = if mime_types.is_empty() {
-        String::new()
-    } else {
-        format!("MimeType={};\n", mime_types.join(";"))
+struct TrayRuntime {
+    handle: ksni::blocking::Handle<LinuxTray>,
+}
+
+impl TrayRuntime {
+    fn id(&self) -> String {
+        self.handle
+            .update(|tray| tray.icon.id.clone())
+            .unwrap_or_default()
+    }
+
+    fn shutdown(self) {
+        self.handle.shutdown().wait();
+    }
+}
+
+struct ShortcutRuntime {
+    thread: JoinHandle<()>,
+}
+
+impl Drop for ShortcutRuntime {
+    fn drop(&mut self) {
+        let _ = self.thread.thread().id();
+    }
+}
+
+#[derive(Clone)]
+struct LinuxTray {
+    icon: TrayIcon,
+    events: EventQueue,
+}
+
+impl LinuxTray {
+    fn push(&self, event: PlatformEvent) {
+        if let Ok(mut events) = self.events.lock() {
+            events.push(event);
+        }
+    }
+}
+
+impl ksni::Tray for LinuxTray {
+    fn id(&self) -> String {
+        sanitize_desktop_id(&self.icon.id)
+    }
+
+    fn title(&self) -> String {
+        self.icon.title.clone()
+    }
+
+    fn icon_name(&self) -> String {
+        self.icon
+            .icon_path
+            .as_ref()
+            .and_then(|path| path.file_stem())
+            .and_then(|name| name.to_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| "application-x-executable".to_string())
+    }
+
+    fn icon_theme_path(&self) -> String {
+        self.icon
+            .icon_path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(|path| path.display().to_string())
+            .unwrap_or_default()
+    }
+
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip {
+            title: self.icon.title.clone(),
+            description: self.icon.tooltip.clone().unwrap_or_default(),
+            ..ksni::ToolTip::default()
+        }
+    }
+
+    fn activate(&mut self, _x: i32, _y: i32) {
+        self.push(PlatformEvent::Tray(TrayActivation::new(
+            self.icon.id.clone(),
+        )));
+    }
+
+    fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
+        self.icon.menu.iter().map(tray_menu_item).collect()
+    }
+}
+
+fn tray_menu_item(item: &TrayMenuItem) -> ksni::MenuItem<LinuxTray> {
+    if item.separator {
+        return ksni::MenuItem::Separator;
+    }
+    let item_id = item.id.clone();
+    let action = item.action.clone();
+    let label = item.label.clone();
+    let enabled = item.enabled;
+    ksni::menu::StandardItem {
+        label,
+        enabled,
+        activate: Box::new(move |tray: &mut LinuxTray| {
+            tray.push(PlatformEvent::Tray(TrayActivation::item(
+                tray.icon.id.clone(),
+                item_id.clone(),
+                action.clone(),
+            )));
+        }),
+        ..ksni::menu::StandardItem::default()
+    }
+    .into()
+}
+
+async fn run_portal_shortcut(
+    registration: GlobalShortcutRegistration,
+    events: EventQueue,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use ashpd::desktop::{
+        CreateSessionOptions,
+        global_shortcuts::{BindShortcutsOptions, GlobalShortcuts, NewShortcut},
     };
-    format!(
-        "[Desktop Entry]\nType=Application\nName={}\nExec={}\nIcon={}\nTerminal=false\nCategories=Utility;\n{}",
-        desktop_value(name),
-        desktop_value(command),
-        desktop_value(id),
-        mime_line
-    )
-}
 
-fn set_mime_default(content: &str, scheme: &str, desktop_id: &str) -> String {
-    let key = format!("x-scheme-handler/{scheme}");
-    let value = format!("{key}={desktop_id}");
-    let mut lines = content.lines().map(ToOwned::to_owned).collect::<Vec<_>>();
-    let Some(section_start) = lines
-        .iter()
-        .position(|line| line.trim() == "[Default Applications]")
-    else {
-        if !lines.is_empty() && lines.last().is_some_and(|line| !line.is_empty()) {
-            lines.push(String::new());
-        }
-        lines.push("[Default Applications]".to_string());
-        lines.push(value);
-        return finish_lines(lines);
+    ensure_portal_app_registration(&registration).await?;
+
+    let Some(trigger) = portal_trigger_for_shortcut(&registration.shortcut) else {
+        return Err("global shortcut is not supported by the Linux portal backend".into());
     };
-
-    let section_end = lines
+    let portal = GlobalShortcuts::new().await?;
+    let session = portal
+        .create_session(CreateSessionOptions::default())
+        .await?;
+    let mut activations = portal.receive_activated().await?;
+    let description = registration
+        .description
+        .as_deref()
+        .unwrap_or(&registration.action);
+    let shortcut = NewShortcut::new(registration.id.as_str(), description)
+        .preferred_trigger(Some(trigger.as_str()));
+    let request = portal
+        .bind_shortcuts(&session, &[shortcut], None, BindShortcutsOptions::default())
+        .await?;
+    let response = request.response()?;
+    if !response
+        .shortcuts()
         .iter()
-        .enumerate()
-        .skip(section_start + 1)
-        .find_map(|(index, line)| line.trim().starts_with('[').then_some(index))
-        .unwrap_or(lines.len());
-
-    if let Some(index) = lines[section_start + 1..section_end]
-        .iter()
-        .position(|line| {
-            line.split_once('=')
-                .is_some_and(|(line_key, _)| line_key == key)
-        })
+        .any(|shortcut| shortcut.id() == registration.id)
     {
-        lines[section_start + 1 + index] = value;
-    } else {
-        lines.insert(section_end, value);
+        return Err("the portal did not bind the requested shortcut".into());
     }
-    finish_lines(lines)
+
+    while let Some(event) = activations.next().await {
+        if event.shortcut_id() != registration.id {
+            continue;
+        }
+        let mut activation =
+            GlobalShortcutActivation::new(registration.id.clone(), registration.action.clone());
+        if let Some(token) = activation_token_from_options(event.options()) {
+            activation = activation.activation_token(token);
+        }
+        if let Ok(mut events) = events.lock() {
+            events.push(PlatformEvent::GlobalShortcut(activation));
+        }
+    }
+    Ok(())
 }
 
-fn native_messaging_manifest(host: &NativeMessagingHost, name: &str, allowed_key: &str) -> String {
-    let allowed = host
-        .allowed_origins
-        .iter()
-        .map(|origin| format!("\"{}\"", json_value(origin)))
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    format!(
-        "{{\n  \"name\": \"{}\",\n  \"description\": \"{}\",\n  \"path\": \"{}\",\n  \"type\": \"stdio\",\n  \"{}\": [{}]\n}}\n",
-        json_value(name),
-        json_value(&host.name),
-        json_value(&host.executable.display().to_string()),
-        allowed_key,
-        allowed.join(", ")
-    )
+fn portal_trigger_for_shortcut(shortcut: &Shortcut) -> Option<String> {
+    let mut parts = Vec::new();
+    if shortcut.modifiers.ctrl {
+        parts.push("CTRL".to_string());
+    }
+    if shortcut.modifiers.alt {
+        parts.push("ALT".to_string());
+    }
+    if shortcut.modifiers.shift {
+        parts.push("SHIFT".to_string());
+    }
+    if shortcut.modifiers.meta {
+        parts.push("LOGO".to_string());
+    }
+    let mut key = shortcut.key.trim().to_string();
+    if key.is_empty() {
+        return None;
+    }
+    if key.len() == 1 && key.is_ascii() {
+        key.make_ascii_lowercase();
+    }
+    parts.push(key);
+    Some(parts.join("+"))
 }
 
-fn finish_lines(lines: Vec<String>) -> String {
-    let mut output = lines.join("\n");
-    output.push('\n');
-    output
+fn activation_token_from_options(
+    options: &std::collections::HashMap<String, ashpd::zvariant::OwnedValue>,
+) -> Option<String> {
+    let value = options.get("activation_token")?.try_clone().ok()?;
+    String::try_from(value)
+        .ok()
+        .filter(|token| !token.trim().is_empty())
 }
 
-fn desktop_value(value: &str) -> String {
-    value.replace(['\n', '\r'], " ")
-}
-
-fn json_value(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-}
-
-fn sanitize_desktop_id(value: &str) -> String {
-    sanitize_with(value, |ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_')
-    })
-}
-
-fn sanitize_scheme(value: &str) -> String {
-    sanitize_with(&value.to_ascii_lowercase(), |ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '+' | '.' | '-')
-    })
-}
-
-fn sanitize_native_host_name(value: &str) -> String {
-    sanitize_with(&value.to_ascii_lowercase(), |ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.')
-    })
-}
-
-fn sanitize_with(value: &str, valid: impl Fn(char) -> bool) -> String {
-    let sanitized = value
-        .chars()
-        .map(|ch| if valid(ch) { ch } else { '_' })
-        .collect::<String>()
-        .trim_matches('_')
-        .to_string();
-    if sanitized.is_empty() {
-        "app".to_string()
-    } else {
-        sanitized
+async fn ensure_portal_app_registration(
+    registration: &GlobalShortcutRegistration,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some(app_id) = registration.app_id.as_deref() else {
+        return Ok(());
+    };
+    if let Some(command) = registration.desktop_command.as_deref() {
+        write_file(
+            data_home()?
+                .join("applications")
+                .join(format!("{}.desktop", sanitize_desktop_id(app_id))),
+            &desktop_entry(
+                app_id,
+                registration.description.as_deref().unwrap_or(app_id),
+                command,
+                &[],
+            ),
+        )?;
+    }
+    let app_id = ashpd::AppID::try_from(app_id)?;
+    match ashpd::register_host_app(app_id).await {
+        Ok(()) => Ok(()),
+        Err(error) if portal_app_already_registered(&error) => Ok(()),
+        Err(error) => Err(Box::new(error)),
     }
 }
 
-fn config_home() -> io::Result<PathBuf> {
-    if let Some(path) = env::var_os("XDG_CONFIG_HOME") {
-        return Ok(PathBuf::from(path));
-    }
-    Ok(home_dir()?.join(".config"))
+fn portal_app_already_registered(error: &ashpd::Error) -> bool {
+    let message = error.to_string();
+    message.contains("already associated") || message.contains("already registered")
 }
 
-fn home_dir() -> io::Result<PathBuf> {
-    env::var_os("HOME").map(PathBuf::from).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            "HOME is required for Linux desktop integration",
-        )
+fn credential_entry(key: &CredentialKey) -> Option<keyring_core::Entry> {
+    if !ensure_keyring_store() {
+        return None;
+    }
+    keyring_core::Entry::new(&key.service, &key.account).ok()
+}
+
+fn ensure_keyring_store() -> bool {
+    static STORE_READY: OnceLock<bool> = OnceLock::new();
+    *STORE_READY.get_or_init(|| match dbus_secret_service_keyring_store::Store::new() {
+        Ok(store) => {
+            keyring_core::set_default_store(store);
+            true
+        }
+        Err(_) => false,
     })
+}
+
+fn secret_from_bytes(bytes: Vec<u8>) -> CredentialSecret {
+    match String::from_utf8(bytes) {
+        Ok(text) => CredentialSecret::Text(text),
+        Err(error) => CredentialSecret::Bytes(error.into_bytes()),
+    }
 }
 
 #[cfg(test)]
@@ -227,23 +438,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mime_defaults_are_inserted_and_replaced() {
-        let content = "[Added Associations]\ntext/plain=editor.desktop;\n";
-        let content = set_mime_default(content, "klarkey", "klarkey.desktop");
-        assert!(content.contains("[Default Applications]"));
-        assert!(content.contains("x-scheme-handler/klarkey=klarkey.desktop"));
+    #[ignore]
+    fn secure_storage_round_trips_through_secret_service() {
+        let services = LinuxDesktopServices::new();
+        let key = CredentialKey::new(
+            "dev.stuk.secure-storage-smoke",
+            format!(
+                "{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ),
+        );
 
-        let content = set_mime_default(&content, "klarkey", "other.desktop");
-        assert!(content.contains("x-scheme-handler/klarkey=other.desktop"));
-        assert_eq!(content.matches("x-scheme-handler/klarkey=").count(), 1);
-    }
-
-    #[test]
-    fn native_messaging_manifest_escapes_values() {
-        let host = NativeMessagingHost::new("com.example.host", "Example Host", "/bin/echo")
-            .allow_origin("chrome-extension://abc/");
-        let manifest = native_messaging_manifest(&host, "com.example.host", "allowed_origins");
-        assert!(manifest.contains("\"name\": \"com.example.host\""));
-        assert!(manifest.contains("\"allowed_origins\": [\"chrome-extension://abc/\"]"));
+        assert!(services.write_credential(&key, CredentialSecret::text("secret")));
+        assert_eq!(
+            services.read_credential(&key),
+            Some(CredentialSecret::Text("secret".to_string()))
+        );
+        assert!(services.delete_credential(&key));
     }
 }

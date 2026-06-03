@@ -1,16 +1,26 @@
+#[cfg(target_os = "windows")]
+mod desktop_files;
+mod desktop_services;
+#[cfg(target_os = "windows")]
+mod single_instance;
+
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    AutostartEntry, BackendDescriptor, BackendKind, BackendStatus, ClipboardData,
-    DeepLinkRegistration, FileDialogOptions, FileDialogResult, GenericPlatform,
+    AutostartEntry, BackendDescriptor, BackendKind, BackendStatus, ClipboardData, CredentialKey,
+    CredentialSecret, DeepLinkRegistration, FileDialogOptions, FileDialogResult, GenericPlatform,
     GlobalShortcutRegistration, MaterialEffect, MaterialResolution, MaterialResolver,
-    NativeMessagingHost, Platform, PlatformCapabilities, PlatformError, PlatformOs, RuntimeTarget,
-    SingleInstancePolicy, TrayIcon, WindowChrome, WindowHandle, WindowId, WindowOptions,
+    NativeMessagingHost, Platform, PlatformCapabilities, PlatformError, PlatformEvent, PlatformOs,
+    RuntimeTarget, SingleInstancePolicy, TrayIcon, WindowChrome, WindowHandle, WindowId,
+    WindowOptions,
 };
 use stuk_style::{Material, Theme};
+
+use crate::desktop_services::WindowsDesktopServices;
 
 #[derive(Debug)]
 pub struct WindowsPlatform {
     inner: GenericPlatform,
+    desktop_services: WindowsDesktopServices,
     backdrop: WindowsBackdrop,
 }
 
@@ -22,6 +32,7 @@ impl WindowsPlatform {
     pub fn with_backdrop(backdrop: WindowsBackdrop) -> Self {
         Self {
             inner: GenericPlatform::with_backend(windows_backend(backdrop)),
+            desktop_services: WindowsDesktopServices::new(),
             backdrop,
         }
     }
@@ -136,35 +147,80 @@ impl Platform for WindowsPlatform {
     }
 
     fn set_tray_icon(&mut self, icon: TrayIcon) -> bool {
+        if !self.desktop_services.set_tray_icon(&icon) {
+            return false;
+        }
         self.inner.set_tray_icon(icon)
     }
 
     fn remove_tray_icon(&mut self, id: &str) -> bool {
+        if !self.desktop_services.remove_tray_icon(id) {
+            return false;
+        }
         self.inner.remove_tray_icon(id)
     }
 
     fn set_autostart(&mut self, entry: AutostartEntry) -> bool {
+        if !self.desktop_services.set_autostart(&entry) {
+            return false;
+        }
         self.inner.set_autostart(entry)
     }
 
     fn register_global_shortcut(&mut self, registration: GlobalShortcutRegistration) -> bool {
+        if !self
+            .desktop_services
+            .register_global_shortcut(&registration)
+        {
+            return false;
+        }
         self.inner.register_global_shortcut(registration)
     }
 
     fn unregister_global_shortcut(&mut self, id: &str) -> bool {
+        if !self.desktop_services.unregister_global_shortcut(id) {
+            return false;
+        }
         self.inner.unregister_global_shortcut(id)
     }
 
     fn register_deep_links(&mut self, registration: DeepLinkRegistration) -> bool {
+        if !self.desktop_services.register_deep_links(&registration) {
+            return false;
+        }
         self.inner.register_deep_links(registration)
     }
 
     fn register_native_messaging_host(&mut self, host: NativeMessagingHost) -> bool {
+        if !self.desktop_services.register_native_messaging_host(&host) {
+            return false;
+        }
         self.inner.register_native_messaging_host(host)
     }
 
     fn set_single_instance_policy(&mut self, policy: SingleInstancePolicy) -> bool {
+        if !self.desktop_services.set_single_instance_policy(policy) {
+            return false;
+        }
         self.inner.set_single_instance_policy(policy)
+    }
+
+    fn take_platform_events(&mut self) -> Vec<PlatformEvent> {
+        let mut events = self.inner.take_platform_events();
+        events.extend(self.desktop_services.take_events());
+        events
+    }
+
+    fn write_credential(&self, key: &CredentialKey, secret: CredentialSecret) -> bool {
+        self.desktop_services.write_credential(key, secret)
+    }
+
+    fn read_credential(&self, key: &CredentialKey) -> Option<CredentialSecret> {
+        self.desktop_services.read_credential(key)
+    }
+
+    fn delete_credential(&self, key: &CredentialKey) -> bool {
+        self.desktop_services.delete_credential(key)
     }
 }
 

@@ -1,14 +1,16 @@
 #[allow(dead_code)]
 mod blur;
+mod desktop_files;
 mod desktop_services;
+mod single_instance;
 
 use stuk_actions::ActionDescriptor;
 use stuk_platform::{
-    AutostartEntry, BackendDescriptor, ClipboardData, DeepLinkRegistration, FileDialogOptions,
-    FileDialogResult, GenericPlatform, GlobalShortcutRegistration, MaterialEffect,
-    MaterialResolution, MaterialResolver, NativeMessagingHost, Platform, PlatformCapabilities,
-    PlatformError, SingleInstancePolicy, TrayIcon, WindowChrome, WindowHandle, WindowId,
-    WindowOptions,
+    AutostartEntry, BackendDescriptor, ClipboardData, CredentialKey, CredentialSecret,
+    DeepLinkRegistration, FileDialogOptions, FileDialogResult, GenericPlatform,
+    GlobalShortcutRegistration, MaterialEffect, MaterialResolution, MaterialResolver,
+    NativeMessagingHost, Platform, PlatformCapabilities, PlatformError, PlatformEvent,
+    SingleInstancePolicy, TrayIcon, WindowChrome, WindowHandle, WindowId, WindowOptions,
 };
 use stuk_style::{Material, Theme};
 
@@ -31,7 +33,7 @@ impl WaylandPlatform {
             inner: GenericPlatform::with_backend(BackendDescriptor::linux_wayland(
                 background_effects,
             )),
-            desktop_services: LinuxDesktopServices,
+            desktop_services: LinuxDesktopServices::new(),
             background_effects,
         }
     }
@@ -132,12 +134,18 @@ impl Platform for WaylandPlatform {
         self.inner.backend()
     }
 
-    fn set_tray_icon(&mut self, _icon: TrayIcon) -> bool {
-        false
+    fn set_tray_icon(&mut self, icon: TrayIcon) -> bool {
+        if !self.desktop_services.set_tray_icon(&icon) {
+            return false;
+        }
+        self.inner.set_tray_icon(icon)
     }
 
-    fn remove_tray_icon(&mut self, _id: &str) -> bool {
-        false
+    fn remove_tray_icon(&mut self, id: &str) -> bool {
+        if !self.desktop_services.remove_tray_icon(id) {
+            return false;
+        }
+        self.inner.remove_tray_icon(id)
     }
 
     fn set_autostart(&mut self, entry: AutostartEntry) -> bool {
@@ -147,12 +155,21 @@ impl Platform for WaylandPlatform {
         self.inner.set_autostart(entry)
     }
 
-    fn register_global_shortcut(&mut self, _registration: GlobalShortcutRegistration) -> bool {
-        false
+    fn register_global_shortcut(&mut self, registration: GlobalShortcutRegistration) -> bool {
+        if !self
+            .desktop_services
+            .register_global_shortcut(&registration)
+        {
+            return false;
+        }
+        self.inner.register_global_shortcut(registration)
     }
 
-    fn unregister_global_shortcut(&mut self, _id: &str) -> bool {
-        false
+    fn unregister_global_shortcut(&mut self, id: &str) -> bool {
+        if !self.desktop_services.unregister_global_shortcut(id) {
+            return false;
+        }
+        self.inner.unregister_global_shortcut(id)
     }
 
     fn register_deep_links(&mut self, registration: DeepLinkRegistration) -> bool {
@@ -169,8 +186,29 @@ impl Platform for WaylandPlatform {
         self.inner.register_native_messaging_host(host)
     }
 
-    fn set_single_instance_policy(&mut self, _policy: SingleInstancePolicy) -> bool {
-        false
+    fn set_single_instance_policy(&mut self, policy: SingleInstancePolicy) -> bool {
+        if !self.desktop_services.set_single_instance_policy(policy) {
+            return false;
+        }
+        self.inner.set_single_instance_policy(policy)
+    }
+
+    fn take_platform_events(&mut self) -> Vec<PlatformEvent> {
+        let mut events = self.inner.take_platform_events();
+        events.extend(self.desktop_services.take_events());
+        events
+    }
+
+    fn write_credential(&self, key: &CredentialKey, secret: CredentialSecret) -> bool {
+        self.desktop_services.write_credential(key, secret)
+    }
+
+    fn read_credential(&self, key: &CredentialKey) -> Option<CredentialSecret> {
+        self.desktop_services.read_credential(key)
+    }
+
+    fn delete_credential(&self, key: &CredentialKey) -> bool {
+        self.desktop_services.delete_credential(key)
     }
 }
 

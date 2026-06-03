@@ -1624,6 +1624,10 @@ pub trait Platform {
     fn register_deep_links(&mut self, registration: DeepLinkRegistration) -> bool;
     fn register_native_messaging_host(&mut self, host: NativeMessagingHost) -> bool;
     fn set_single_instance_policy(&mut self, policy: SingleInstancePolicy) -> bool;
+    fn take_platform_events(&mut self) -> Vec<PlatformEvent>;
+    fn write_credential(&self, key: &CredentialKey, secret: CredentialSecret) -> bool;
+    fn read_credential(&self, key: &CredentialKey) -> Option<CredentialSecret>;
+    fn delete_credential(&self, key: &CredentialKey) -> bool;
 }
 ```
 
@@ -2416,8 +2420,8 @@ Done when simple Stuk apps are clearly lighter than webview equivalents.
 Build:
 
 - generic Wayland polish
-- Windows backend
-- macOS backend
+- Windows packaged app target and native window polish
+- macOS packaged app target and native window polish
 - packaging targets
 
 Done when Stuk apps can run outside Staccato.
@@ -2962,11 +2966,14 @@ Current implementation checkpoint:
   generated capability JSON.
 - Runtime bridge dispatch enforces descriptor permissions, target availability, and origin policy
   before calling Rust handlers.
+- Fenestra bridge surfaces support native-to-web events through `bridge.listen(name, callback)`.
+  Linux tray activations, global shortcut activations, and single-instance activations are forwarded
+  as bridge events for webview apps.
 - Linux/Wayland Stuk-integrated webviews use a Stuk-owned off-screen CEF backend by default. Stuk
   owns the native window, titlebar, resize/drag behavior, background effect regions, and transparent
   composition while Fenestra owns CEF frame presentation.
 - Remaining production hardening: typed TypeScript binding generation, manifest-to-runtime command
-  permission wiring, devtools tracing, event streaming, IME hardening, GPU shared-texture handoff,
+  permission wiring, devtools tracing, IME hardening, GPU shared-texture handoff,
   and broader platform OSR backends.
 
 Bridge commands are the only default way for web UI to touch native Rust capabilities. Web code must
@@ -3311,17 +3318,29 @@ Klarkey-class native requirements:
   declared app permissions rather than ad hoc side channels.
 ```
 
-Current Linux backend status:
+Current desktop backend status:
 
-- autostart writes user-local desktop entries under `~/.config/autostart/`.
-- deep-link registration writes `x-scheme-handler/*` defaults to the user `mimeapps.list`.
-- native messaging writes Chrome/Chromium/Brave and Firefox user manifest files.
-- Wayland tray icons require a status-notifier/appindicator backend and are capability-gated off
-  until that live backend is present.
-- Wayland global shortcuts require an XDG desktop portal global-shortcuts session and are
-  capability-gated off until that live backend is present.
-- single-instance process routing is still a runtime coordinator concern and must not be reported
-  as supported by plain Linux backends until it has a lock/activation backend.
+- Linux autostart writes user-local desktop entries under `~/.config/autostart/`.
+- Linux deep-link registration writes `x-scheme-handler/*` defaults to the user `mimeapps.list`.
+- Linux native messaging writes Chrome/Chromium/Brave and Firefox user manifest files.
+- Linux Wayland tray icons use a StatusNotifierItem backend and queue tray activation events through
+  `PlatformEvent::Tray`.
+- Linux Wayland global shortcuts use XDG desktop portal global-shortcuts sessions and queue
+  `PlatformEvent::GlobalShortcut` with portal activation tokens when available.
+- Linux single-instance routing uses a user-runtime Unix socket and queues
+  `PlatformEvent::SingleInstance` for second-launch arguments.
+- Linux credential and secure-storage calls use Secret Service through `keyring-core`.
+- macOS autostart writes user LaunchAgent plists, native messaging writes user browser manifests,
+  tray icons use the native status item backend, global shortcuts use the native global-hotkey
+  backend, deep-link registration calls LaunchServices for already-declared bundle URL schemes,
+  single-instance routing uses a loopback listener, and credential storage uses Keychain through
+  `keyring-core`.
+- Windows autostart, protocol/deep-link handlers, and native messaging use user registry entries,
+  tray icons use the native notification-area backend, global shortcuts use the native
+  global-hotkey backend, single-instance routing uses a loopback listener, and credential storage
+  uses Windows Credential Manager through `keyring-core`.
+- Native credential reads return `CredentialSecret::Text` when the stored bytes are valid UTF-8 and
+  `CredentialSecret::Bytes` otherwise.
 
 ### Why This Exists
 

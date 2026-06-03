@@ -33,9 +33,11 @@ pub use backend::{
     current_desktop_os, current_native_backend,
 };
 pub use integration::{
-    AutostartEntry, DeepLinkRegistration, FileDialogFilter, FileDialogMode, FileDialogOptions,
-    FileDialogResult, GenericPlatform, GlobalShortcutRegistration, NativeMessagingHost, Platform,
-    SingleInstancePolicy, TrayIcon, TrayMenuItem, WindowHandle, WindowId,
+    AutostartEntry, CredentialKey, CredentialSecret, DeepLinkRegistration, FileDialogFilter,
+    FileDialogMode, FileDialogOptions, FileDialogResult, GenericPlatform, GlobalShortcutActivation,
+    GlobalShortcutRegistration, NativeMessagingHost, Platform, PlatformEvent,
+    SingleInstanceActivation, SingleInstancePolicy, TrayActivation, TrayIcon, TrayMenuItem,
+    WindowHandle, WindowId,
 };
 pub use material::{MaterialEffect, MaterialResolution, MaterialResolver};
 pub use session::{SplitHint, StaccatoSession};
@@ -283,14 +285,14 @@ impl PlatformCapabilities {
             command_palette: false,
             workspace_sessions: false,
             native_notifications: true,
-            tray_icons: false,
+            tray_icons: true,
             autostart: true,
-            global_shortcuts: false,
+            global_shortcuts: true,
             deep_links: true,
-            single_instance: false,
+            single_instance: true,
             native_messaging: true,
-            secure_storage: false,
-            credential_storage: false,
+            secure_storage: true,
+            credential_storage: true,
             system_dark_mode: true,
             high_contrast: true,
         }
@@ -1823,7 +1825,24 @@ mod tests {
         assert!(!capabilities.live_blur);
         assert!(!capabilities.transparent_windows);
         assert!(!capabilities.command_palette);
+        assert!(!capabilities.secure_storage);
+        assert!(!capabilities.credential_storage);
         assert!(capabilities.system_dark_mode);
+    }
+
+    #[test]
+    fn native_desktop_capabilities_include_secure_storage() {
+        for capabilities in [
+            PlatformCapabilities::desktop_linux(true, true),
+            PlatformCapabilities::desktop_windows(true),
+            PlatformCapabilities::desktop_macos(true),
+        ] {
+            assert!(capabilities.secure_storage);
+            assert!(capabilities.credential_storage);
+            assert!(capabilities.tray_icons);
+            assert!(capabilities.global_shortcuts);
+            assert!(capabilities.single_instance);
+        }
     }
 
     #[test]

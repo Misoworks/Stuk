@@ -9,3 +9,11 @@ license.workspace = true
 stuk-actions.workspace = true
 stuk-platform.workspace = true
 stuk-style.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store.workspace = true
+global-hotkey.workspace = true
+image.workspace = true
+keyring-core.workspace = true
+serde_json.workspace = true
+tray-icon.workspace = true

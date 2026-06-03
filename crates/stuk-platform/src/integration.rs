@@ -238,6 +238,9 @@ pub struct GlobalShortcutRegistration {
     pub id: String,
     pub shortcut: Shortcut,
     pub action: String,
+    pub app_id: Option<String>,
+    pub description: Option<String>,
+    pub desktop_command: Option<String>,
 }
 
 impl GlobalShortcutRegistration {
@@ -246,7 +249,25 @@ impl GlobalShortcutRegistration {
             id: id.into(),
             shortcut,
             action: action.into(),
+            app_id: None,
+            description: None,
+            desktop_command: None,
         }
+    }
+
+    pub fn app_id(mut self, app_id: impl Into<String>) -> Self {
+        self.app_id = Some(app_id.into());
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn desktop_command(mut self, command: impl Into<String>) -> Self {
+        self.desktop_command = Some(command.into());
+        self
     }
 }
 
@@ -302,6 +323,124 @@ pub enum SingleInstancePolicy {
     AllowMultiple,
     ReuseExisting,
     FocusExisting,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrayActivation {
+    pub tray_id: String,
+    pub item_id: Option<String>,
+    pub action: Option<String>,
+}
+
+impl TrayActivation {
+    pub fn new(tray_id: impl Into<String>) -> Self {
+        Self {
+            tray_id: tray_id.into(),
+            item_id: None,
+            action: None,
+        }
+    }
+
+    pub fn item(
+        tray_id: impl Into<String>,
+        item_id: impl Into<String>,
+        action: Option<String>,
+    ) -> Self {
+        Self {
+            tray_id: tray_id.into(),
+            item_id: Some(item_id.into()),
+            action,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GlobalShortcutActivation {
+    pub id: String,
+    pub action: String,
+    pub activation_token: Option<String>,
+}
+
+impl GlobalShortcutActivation {
+    pub fn new(id: impl Into<String>, action: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            action: action.into(),
+            activation_token: None,
+        }
+    }
+
+    pub fn activation_token(mut self, token: impl Into<String>) -> Self {
+        self.activation_token = Some(token.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SingleInstanceActivation {
+    pub policy: SingleInstancePolicy,
+    pub arguments: Vec<String>,
+    pub working_directory: Option<PathBuf>,
+}
+
+impl SingleInstanceActivation {
+    pub fn new(policy: SingleInstancePolicy, arguments: Vec<String>) -> Self {
+        Self {
+            policy,
+            arguments,
+            working_directory: None,
+        }
+    }
+
+    pub fn working_directory(mut self, directory: impl Into<PathBuf>) -> Self {
+        self.working_directory = Some(directory.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PlatformEvent {
+    Tray(TrayActivation),
+    GlobalShortcut(GlobalShortcutActivation),
+    SingleInstance(SingleInstanceActivation),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CredentialKey {
+    pub service: String,
+    pub account: String,
+}
+
+impl CredentialKey {
+    pub fn new(service: impl Into<String>, account: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+            account: account.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CredentialSecret {
+    Text(String),
+    Bytes(Vec<u8>),
+}
+
+impl CredentialSecret {
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Text(text.into())
+    }
+
+    pub fn bytes(bytes: impl Into<Vec<u8>>) -> Self {
+        Self::Bytes(bytes.into())
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        match self {
+            Self::Text(text) => text.into_bytes(),
+            Self::Bytes(bytes) => bytes,
+        }
+    }
 }
 
 pub trait Platform {
@@ -372,6 +511,25 @@ pub trait Platform {
         let _ = policy;
         false
     }
+
+    fn take_platform_events(&mut self) -> Vec<PlatformEvent> {
+        Vec::new()
+    }
+
+    fn write_credential(&self, key: &CredentialKey, secret: CredentialSecret) -> bool {
+        let _ = (key, secret);
+        false
+    }
+
+    fn read_credential(&self, key: &CredentialKey) -> Option<CredentialSecret> {
+        let _ = key;
+        None
+    }
+
+    fn delete_credential(&self, key: &CredentialKey) -> bool {
+        let _ = key;
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -387,6 +545,8 @@ pub struct GenericPlatform {
     deep_links: BTreeMap<String, DeepLinkRegistration>,
     native_messaging_hosts: BTreeMap<String, NativeMessagingHost>,
     single_instance_policy: SingleInstancePolicy,
+    platform_events: RefCell<Vec<PlatformEvent>>,
+    credentials: RefCell<BTreeMap<CredentialKey, CredentialSecret>>,
     clipboard: RefCell<Option<ClipboardData>>,
     next_file_dialog_result: RefCell<Option<FileDialogResult>>,
 }
@@ -416,6 +576,8 @@ impl GenericPlatform {
             deep_links: BTreeMap::new(),
             native_messaging_hosts: BTreeMap::new(),
             single_instance_policy: SingleInstancePolicy::AllowMultiple,
+            platform_events: RefCell::new(Vec::new()),
+            credentials: RefCell::new(BTreeMap::new()),
             clipboard: RefCell::new(None),
             next_file_dialog_result: RefCell::new(None),
         }
@@ -478,6 +640,10 @@ impl GenericPlatform {
 
     pub fn set_next_file_dialog_result(&self, result: FileDialogResult) {
         *self.next_file_dialog_result.borrow_mut() = Some(result);
+    }
+
+    pub fn push_platform_event(&self, event: PlatformEvent) {
+        self.platform_events.borrow_mut().push(event);
     }
 }
 
@@ -645,6 +811,32 @@ impl Platform for GenericPlatform {
         }
         self.single_instance_policy = policy;
         true
+    }
+
+    fn take_platform_events(&mut self) -> Vec<PlatformEvent> {
+        self.platform_events.borrow_mut().drain(..).collect()
+    }
+
+    fn write_credential(&self, key: &CredentialKey, secret: CredentialSecret) -> bool {
+        if !self.capabilities.credential_storage && !self.capabilities.secure_storage {
+            return false;
+        }
+        self.credentials.borrow_mut().insert(key.clone(), secret);
+        true
+    }
+
+    fn read_credential(&self, key: &CredentialKey) -> Option<CredentialSecret> {
+        if !self.capabilities.credential_storage && !self.capabilities.secure_storage {
+            return None;
+        }
+        self.credentials.borrow().get(key).cloned()
+    }
+
+    fn delete_credential(&self, key: &CredentialKey) -> bool {
+        if !self.capabilities.credential_storage && !self.capabilities.secure_storage {
+            return false;
+        }
+        self.credentials.borrow_mut().remove(key).is_some()
     }
 }
 
