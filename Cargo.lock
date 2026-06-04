@@ -2945,6 +2945,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "stuk-platform-shell"
+version = "0.1.0"
+
+[[package]]
 name = "stuk-platform-staccato"
 version = "0.1.0"
 dependencies = [

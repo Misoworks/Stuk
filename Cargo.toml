@@ -11,6 +11,7 @@ members = [
     "crates/stuk-text",
     "crates/stuk-widgets",
     "crates/stuk-platform",
+    "crates/stuk-platform-shell",
     "crates/stuk-platform-staccato",
     "crates/stuk-platform-wayland",
     "crates/stuk-platform-windows",
@@ -47,6 +48,7 @@ stuk-style = { path = "crates/stuk-style" }
 stuk-text = { path = "crates/stuk-text" }
 stuk-widgets = { path = "crates/stuk-widgets" }
 stuk-platform = { path = "crates/stuk-platform" }
+stuk-platform-shell = { path = "crates/stuk-platform-shell" }
 stuk-platform-staccato = { path = "crates/stuk-platform-staccato" }
 stuk-platform-wayland = { path = "crates/stuk-platform-wayland" }
 stuk-platform-windows = { path = "crates/stuk-platform-windows" }

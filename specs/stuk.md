@@ -2764,6 +2764,14 @@ CEF windows used by Fenestra/Stuk integration must:
 - load the app URL explicitly, never fall back to Chrome/Google defaults.
 - support transparent painting only on backends that can actually composite it correctly.
 - expose resize and focus through the Stuk window lifecycle.
+- expose lifecycle policy controls for active/background frame rates, suspend-on-minimize,
+  suspend-on-occlusion, optional suspend-on-blur, and opt-in hard hibernation.
+- dispatch web lifecycle events before hard hibernation so apps can pause work or persist volatile UI
+  state.
+- support hidden palette windows that can be shown, focused, and hidden again without closing the
+  process or tearing down the bridge.
+- hidden OSR webview windows must enter the suspended lifecycle immediately and resume only when
+  shown or focused.
 - expose Stuk-owned drag regions and window-control actions when Stuk chrome is requested.
 - expose bridge command declarations to the host and cancel bridge navigation before the page leaves
   the app surface.
@@ -2969,6 +2977,12 @@ Current implementation checkpoint:
 - Fenestra bridge surfaces support native-to-web events through `bridge.listen(name, callback)`.
   Linux tray activations, global shortcut activations, and single-instance activations are forwarded
   as bridge events for webview apps.
+- Fenestra always injects `window.fenestra.lifecycle`, `fenestra:suspend`, `fenestra:resume`, and
+  `fenestra:hibernate` into OSR webviews. Hibernation keeps the last native texture visible, not a
+  blank or sample-chrome window, while the CEF child is stopped.
+- Fenestra always injects `window.fenestra.window.show()`, `hide()`, and `focus()` for palette-style
+  apps. Native code can use the matching process controls so tray, global shortcut, deep link, and
+  native messaging activations can reveal a hidden window directly.
 - Linux/Wayland Stuk-integrated webviews use a Stuk-owned off-screen CEF backend by default. Stuk
   owns the native window, titlebar, resize/drag behavior, background effect regions, and transparent
   composition while Fenestra owns CEF frame presentation.

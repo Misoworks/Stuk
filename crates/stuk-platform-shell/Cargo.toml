@@ -1,0 +1,9 @@
+[package]
+name = "stuk-platform-shell"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shell-surface metadata for Stuk platform integrations"
+
+[dependencies]
