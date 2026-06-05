@@ -1,4 +1,5 @@
 mod build;
+mod bundle;
 mod doctor;
 mod project;
 mod source_install;
@@ -10,11 +11,12 @@ use std::{
 };
 
 use build::{BuildOptions, run_build};
+use bundle::BundleOptions;
 use clap::{Parser, Subcommand};
 use doctor::run_doctor;
 use project::{CreateProjectOptions, DevOptions, create_project, run_cargo_command, run_dev};
 use source_install::{InstallOptions, UpdateOptions};
-use stuk_devtools::{BundlePlan, BundleTarget, ManifestInspection, PreviewDescriptor};
+use stuk_devtools::{ManifestInspection, PreviewDescriptor};
 use stuk_manifest::{Diagnostic, DiagnosticLevel, parse_file, validate_with_base_dir};
 
 #[derive(Debug, Parser)]
@@ -77,6 +79,12 @@ enum Command {
         target: String,
         #[arg(long)]
         json: bool,
+        #[arg(long, default_value = "dist")]
+        out: PathBuf,
+        #[arg(long)]
+        release: bool,
+        #[arg(long)]
+        no_build: bool,
         #[arg(default_value = "Stuk.toml")]
         manifest: PathBuf,
     },
@@ -135,8 +143,18 @@ fn run(command: Command) -> Result<ExitCode, String> {
         Command::Bundle {
             target,
             json,
+            out,
+            release,
+            no_build,
             manifest,
-        } => bundle_manifest(target, json, manifest),
+        } => bundle::run_bundle(BundleOptions {
+            target,
+            json,
+            manifest,
+            out,
+            release,
+            no_build,
+        }),
         Command::Install {
             source,
             id,
@@ -355,42 +373,6 @@ fn preview_descriptor_json(preview: &PreviewDescriptor) -> String {
         optional_json_string(preview.theme.as_deref()),
         optional_json_string(preview.density.as_deref())
     )
-}
-
-fn bundle_manifest(target: String, json: bool, manifest: PathBuf) -> Result<ExitCode, String> {
-    let Some(target) = BundleTarget::parse(&target) else {
-        return Err("unknown bundle target; use staccato, flatpak, appimage, windows, macos, android, ios, or web".to_string());
-    };
-    let manifest_data = match parse_file(&manifest) {
-        Ok(manifest_data) => manifest_data,
-        Err(error) => {
-            if json {
-                println!(
-                    "{{\"ok\":false,\"diagnostics\":[{{\"level\":\"error\",\"path\":\"{}\",\"message\":\"{}\"}}]}}",
-                    escape_json(&manifest.display().to_string()),
-                    escape_json(&error.to_string())
-                );
-            } else {
-                eprintln!("bundle failed: {error}");
-            }
-            return Ok(ExitCode::from(1));
-        }
-    };
-    let base_dir = manifest_base_dir(&manifest);
-    let diagnostics = validate_with_base_dir(&manifest_data, base_dir);
-    let plan = BundlePlan::from_manifest(&manifest_data, &diagnostics, target, &manifest);
-
-    if json {
-        println!("{}", plan.to_json());
-    } else {
-        print!("{}", plan.to_text());
-    }
-
-    if plan.ok {
-        Ok(ExitCode::SUCCESS)
-    } else {
-        Ok(ExitCode::from(1))
-    }
 }
 
 fn diagnostics_json(diagnostics: &[Diagnostic]) -> String {

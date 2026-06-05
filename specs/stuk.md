@@ -2172,9 +2172,22 @@ stuk bundle --target macos
 stuk bundle --target android
 stuk bundle --target ios
 stuk bundle --target web
+stuk bundle --target macos --release --out dist
+stuk bundle --target windows --no-build --out dist
 ```
 
-Staccato bundle should include:
+`stuk bundle` builds by default and stages a distributable directory under:
+
+```txt
+dist/<target>/<app-id>/
+```
+
+`--no-build` is available for CI and cross-compile flows that build the binary separately before
+staging. The staged output is intentionally directory-first, similar to Electron-builder's unpacked
+artifacts, so signing, notarization, Flatpak export, AppImage generation, MSIX/NSIS, or DMG creation
+can run as a later packaging step without rebuilding the app.
+
+Staged bundles include:
 
 - binary
 - manifest
@@ -2185,6 +2198,9 @@ Staccato bundle should include:
 - settings schema
 - desktop/app launcher metadata
 - Staccato integration metadata
+- webview metadata and copied web assets when `[webview].entry` is present
+- platform launcher metadata such as macOS `Info.plist`, Linux `.desktop`, Flatpak JSON, AppImage
+  `AppRun`, Windows app manifest, or mobile target metadata
 
 Flatpak support is important for generic Linux.
 
@@ -3252,6 +3268,12 @@ A Stuk webview bundle includes:
 - actions metadata
 - settings schema
 - optional bundled CEF runtime if target requires it
+
+The first implemented bundle output is a staged directory, not a signed installer. For webview apps,
+`stuk bundle` copies the declared `[webview].entry` directory into the bundle and writes webview
+runtime metadata. Shared/user-local Fenestra CEF remains the default; bundled CEF is an explicit
+larger artifact mode and should be added by a target-specific packager or future `--runtime bundled`
+flow.
 
 Preferred on Glacier:
 

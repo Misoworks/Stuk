@@ -44,14 +44,22 @@ cargo run -p stuk-cli -- dev --once
 cargo run -p stuk-cli -- build --release
 cargo run -p stuk-cli -- build --target staccato
 cargo run -p stuk-cli -- doctor --json
-cargo run -p stuk-cli -- validate examples/hello/Stuk.toml
-cargo run -p stuk-cli -- inspect examples/hello/Stuk.toml
-cargo run -p stuk-cli -- inspect --json examples/hello/Stuk.toml
-cargo run -p stuk-cli -- preview --theme dark examples/hello/Stuk.toml
-cargo run -p stuk-cli -- preview --json examples/hello/Stuk.toml
-cargo run -p stuk-cli -- bundle --target staccato examples/hello/Stuk.toml
-cargo run -p stuk-cli -- bundle --target flatpak --json examples/hello/Stuk.toml
+cargo run -p stuk-cli -- validate examples/notes/Stuk.toml
+cargo run -p stuk-cli -- inspect examples/notes/Stuk.toml
+cargo run -p stuk-cli -- inspect --json examples/notes/Stuk.toml
+cargo run -p stuk-cli -- preview --theme dark examples/notes/Stuk.toml
+cargo run -p stuk-cli -- preview --json examples/notes/Stuk.toml
+cargo run -p stuk-cli -- bundle --target staccato examples/notes/Stuk.toml
+cargo run -p stuk-cli -- bundle --target flatpak --json examples/notes/Stuk.toml
+cargo run -p stuk-cli -- bundle --target macos --release --out dist examples/notes/Stuk.toml
+cargo run -p stuk-cli -- bundle --target windows --no-build --out dist examples/notes/Stuk.toml
 ```
+
+`stuk bundle` builds by default, then stages an Electron-builder-style distributable directory under
+`dist/<target>/<app-id>/`. The staged output includes the app binary, `Stuk.toml`, bundle metadata,
+icons when declared, webview metadata/assets when `[webview].entry` is present, and target-specific
+launcher files such as `.app/Contents/Info.plist`, `.desktop`, AppImage `AppRun`, Flatpak JSON, or
+Windows app manifest files. Use `--no-build` when CI has already produced the target binary.
 
 The same inspection APIs are available from the `stuk` facade for app-side tooling and previews:
 

@@ -239,6 +239,7 @@ pub struct GlobalShortcutRegistration {
     pub shortcut: Shortcut,
     pub action: String,
     pub app_id: Option<String>,
+    pub app_name: Option<String>,
     pub description: Option<String>,
     pub desktop_command: Option<String>,
 }
@@ -250,6 +251,7 @@ impl GlobalShortcutRegistration {
             shortcut,
             action: action.into(),
             app_id: None,
+            app_name: None,
             description: None,
             desktop_command: None,
         }
@@ -257,6 +259,11 @@ impl GlobalShortcutRegistration {
 
     pub fn app_id(mut self, app_id: impl Into<String>) -> Self {
         self.app_id = Some(app_id.into());
+        self
+    }
+
+    pub fn app_name(mut self, app_name: impl Into<String>) -> Self {
+        self.app_name = Some(app_name.into());
         self
     }
 

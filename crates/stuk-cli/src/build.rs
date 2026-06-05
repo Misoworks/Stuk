@@ -49,7 +49,7 @@ impl BuildTarget {
         }
     }
 
-    fn rust_target(self) -> Option<&'static str> {
+    pub(crate) fn rust_target(self) -> Option<&'static str> {
         match self {
             Self::Staccato | Self::Linux if cfg!(target_os = "linux") => None,
             Self::Staccato | Self::Linux if cfg!(target_arch = "aarch64") => {
