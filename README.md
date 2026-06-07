@@ -21,6 +21,10 @@ This repository currently implements the early native toolkit path:
 - CLI commands for project creation, validation, manifest inspection, structured doctor reports, watched dev loops, and Cargo-backed run/build/check flows.
 - Manifest validation covers app IDs, semantic versions, icon paths, window sizing, materials, chrome modes, actions, settings, and permissions.
 
+For a practical map of crate ownership, app structure, widgets, actions, settings, async work,
+materials, Fenestra integration, CLI flows, and implementation rules, see
+[`docs/implementation-guide.md`](docs/implementation-guide.md).
+
 ## Run Examples
 
 ```sh
