@@ -388,6 +388,7 @@ pub struct SingleInstanceActivation {
     pub policy: SingleInstancePolicy,
     pub arguments: Vec<String>,
     pub working_directory: Option<PathBuf>,
+    pub activation_token: Option<String>,
 }
 
 impl SingleInstanceActivation {
@@ -396,11 +397,17 @@ impl SingleInstanceActivation {
             policy,
             arguments,
             working_directory: None,
+            activation_token: None,
         }
     }
 
     pub fn working_directory(mut self, directory: impl Into<PathBuf>) -> Self {
         self.working_directory = Some(directory.into());
+        self
+    }
+
+    pub fn activation_token(mut self, token: impl Into<String>) -> Self {
+        self.activation_token = Some(token.into());
         self
     }
 }

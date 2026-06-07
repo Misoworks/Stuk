@@ -273,6 +273,18 @@ Fenestra owns CEF runtime resolution, webview hosting, JS bridge transport, acti
 runtime packaging. Stuk owns app lifecycle, native windows, actions, settings, permissions,
 materials, and packaging metadata.
 
+Hosted web apps use the same adapter. `url(...)` is the production entry, `dev_url(...)` overrides
+it during development, and `allowed_origin(...)` declares extra document origins that may use the
+bridge:
+
+```rust
+WebViewWindow::new()
+    .url("https://raday.lantharos.com")
+    .dev_url("http://localhost:5173")
+    .allowed_origin("https://preview.raday.lantharos.com")
+    .fenestra_chrome()
+```
+
 ## CLI
 
 Create, validate, run, inspect, and bundle:
