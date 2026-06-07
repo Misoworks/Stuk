@@ -60,14 +60,16 @@ impl Default for WaylandPlatform {
 impl MaterialResolver for WaylandPlatform {
     fn resolve_material(&self, material: &Material, theme: &Theme) -> MaterialResolution {
         match material {
-            Material::Luca if self.background_effects => MaterialResolution::with_effect(
-                material,
-                theme,
-                MaterialEffect::CompositorBlur {
-                    backend: "ext-background-effect-v1",
-                    radius: 28.0,
-                },
-            ),
+            Material::Luca | Material::Niko if self.background_effects => {
+                MaterialResolution::with_effect(
+                    material,
+                    theme,
+                    MaterialEffect::CompositorBlur {
+                        backend: "ext-background-effect-v1",
+                        radius: 28.0,
+                    },
+                )
+            }
             _ => MaterialResolution::fallback(material, theme),
         }
     }

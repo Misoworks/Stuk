@@ -142,7 +142,7 @@ pub fn agents_md() -> String {
 - App metadata, permissions, windows, actions, and settings schema live in `Stuk.toml`.
 - Keep platform-specific imports out of shared views/components unless routed through `src/platforms/`.
 - Prefer existing Stuk widgets before custom drawing.
-- Use semantic materials (`Maris`, `Luca`, `Surface`) instead of hardcoded blur.
+- Use semantic materials (`Luca`, `Niko`, `Maris`, `Surface`) instead of hardcoded blur.
 - Run `stuk validate` after manifest changes.
 - Run `cargo test` if logic changed.
 "#

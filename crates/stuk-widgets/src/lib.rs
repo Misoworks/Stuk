@@ -74,10 +74,18 @@ impl Window {
     }
 
     pub fn glass(mut self) -> Self {
-        self.element.material = Material::Window;
+        self.element.material = Material::Luca;
         self.element.chrome = WindowChrome::System;
         self.element.transparent = true;
-        self.element.background_effect = WindowBackgroundEffect::Blur;
+        self.element.background_effect = WindowBackgroundEffect::Luca;
+        self
+    }
+
+    pub fn glass_material(mut self, material: Material) -> Self {
+        self.element.background_effect = background_effect_for_glass_material(&material);
+        self.element.material = material;
+        self.element.chrome = WindowChrome::System;
+        self.element.transparent = true;
         self
     }
 
@@ -195,6 +203,15 @@ impl Window {
 impl Default for Window {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn background_effect_for_glass_material(material: &Material) -> WindowBackgroundEffect {
+    match material {
+        Material::Luca => WindowBackgroundEffect::Luca,
+        Material::Niko => WindowBackgroundEffect::Niko,
+        Material::Maris => WindowBackgroundEffect::Maris,
+        _ => WindowBackgroundEffect::Blur,
     }
 }
 
@@ -636,9 +653,21 @@ mod tests {
         };
 
         assert!(element.transparent);
-        assert_eq!(element.background_effect, WindowBackgroundEffect::Blur);
+        assert_eq!(element.background_effect, WindowBackgroundEffect::Luca);
         assert_eq!(element.chrome, WindowChrome::System);
-        assert_eq!(element.material, Material::Window);
+        assert_eq!(element.material, Material::Luca);
+    }
+
+    #[test]
+    fn glass_material_selects_matching_background_effect() {
+        let window = Window::new().glass_material(Material::Niko);
+        let Element::Window(element) = Element::from(window) else {
+            panic!("window builder should produce a window element");
+        };
+
+        assert!(element.transparent);
+        assert_eq!(element.background_effect, WindowBackgroundEffect::Niko);
+        assert_eq!(element.material, Material::Niko);
     }
 
     #[test]

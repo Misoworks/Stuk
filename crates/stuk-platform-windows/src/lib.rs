@@ -54,7 +54,7 @@ impl Default for WindowsPlatform {
 impl MaterialResolver for WindowsPlatform {
     fn resolve_material(&self, material: &Material, theme: &Theme) -> MaterialResolution {
         match material {
-            Material::Luca if self.backdrop != WindowsBackdrop::Disabled => {
+            Material::Luca | Material::Niko if self.backdrop != WindowsBackdrop::Disabled => {
                 MaterialResolution::with_effect(
                     material,
                     theme,

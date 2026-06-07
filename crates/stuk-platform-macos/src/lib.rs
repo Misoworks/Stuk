@@ -55,7 +55,7 @@ impl Default for MacosPlatform {
 impl MaterialResolver for MacosPlatform {
     fn resolve_material(&self, material: &Material, theme: &Theme) -> MaterialResolution {
         match material {
-            Material::Luca | Material::Popover | Material::Dialog
+            Material::Luca | Material::Niko | Material::Popover | Material::Dialog
                 if self.vibrancy != MacosVibrancy::Disabled =>
             {
                 MaterialResolution::with_effect(

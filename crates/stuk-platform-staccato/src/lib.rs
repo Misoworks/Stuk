@@ -39,7 +39,15 @@ impl MaterialResolver for StaccatoPlatform {
                 material,
                 theme,
                 MaterialEffect::CompositorBlur {
-                    backend: "baton",
+                    backend: "baton-luca",
+                    radius: 32.0,
+                },
+            ),
+            Material::Niko => MaterialResolution::with_effect(
+                material,
+                theme,
+                MaterialEffect::CompositorBlur {
+                    backend: "baton-niko",
                     radius: 32.0,
                 },
             ),
@@ -199,7 +207,14 @@ mod tests {
         assert_eq!(
             platform.resolve_material(&Material::Luca, &theme).effect,
             MaterialEffect::CompositorBlur {
-                backend: "baton",
+                backend: "baton-luca",
+                radius: 32.0
+            }
+        );
+        assert_eq!(
+            platform.resolve_material(&Material::Niko, &theme).effect,
+            MaterialEffect::CompositorBlur {
+                backend: "baton-niko",
                 radius: 32.0
             }
         );

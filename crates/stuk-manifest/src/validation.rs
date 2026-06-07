@@ -17,11 +17,15 @@ const VALID_MATERIALS: &[&str] = &[
     "dialog",
     "maris",
     "luca",
+    "niko",
 ];
 const VALID_CHROMES: &[&str] = &["system", "stuk", "compact", "sidebar", "none"];
 const VALID_BACKGROUND_EFFECTS: &[&str] = &[
     "none",
     "blur",
+    "luca",
+    "niko",
+    "maris",
     "acrylic",
     "mica",
     "mica-alt",
@@ -152,7 +156,7 @@ fn validate_inner(manifest: &Manifest, base_dir: Option<&Path>) -> Vec<Diagnosti
                 effect,
                 VALID_BACKGROUND_EFFECTS,
                 "Window background effect is not supported.",
-                "Use none, blur, acrylic, mica, mica-alt, vibrancy, hud-window, sidebar, or under-window-background.",
+                "Use none, blur, luca, niko, maris, acrylic, mica, mica-alt, vibrancy, hud-window, sidebar, or under-window-background.",
                 &mut diagnostics,
             );
         }

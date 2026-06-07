@@ -164,6 +164,9 @@ pub enum WindowBackgroundEffect {
     #[default]
     None,
     Blur,
+    Luca,
+    Niko,
+    Maris,
     Acrylic,
     Mica,
     MicaAlt,
@@ -178,6 +181,9 @@ impl WindowBackgroundEffect {
         match value {
             "none" => Some(Self::None),
             "blur" => Some(Self::Blur),
+            "luca" => Some(Self::Luca),
+            "niko" => Some(Self::Niko),
+            "maris" => Some(Self::Maris),
             "acrylic" => Some(Self::Acrylic),
             "mica" => Some(Self::Mica),
             "mica-alt" => Some(Self::MicaAlt),
@@ -193,6 +199,9 @@ impl WindowBackgroundEffect {
         match self {
             Self::None => "none",
             Self::Blur => "blur",
+            Self::Luca => "luca",
+            Self::Niko => "niko",
+            Self::Maris => "maris",
             Self::Acrylic => "acrylic",
             Self::Mica => "mica",
             Self::MicaAlt => "mica-alt",
@@ -481,7 +490,10 @@ impl PlatformCapabilities {
     pub fn supports_background_effect(self, effect: WindowBackgroundEffect) -> bool {
         match effect {
             WindowBackgroundEffect::None => true,
-            WindowBackgroundEffect::Blur => self.live_blur && self.transparent_windows,
+            WindowBackgroundEffect::Blur
+            | WindowBackgroundEffect::Luca
+            | WindowBackgroundEffect::Niko => self.live_blur && self.transparent_windows,
+            WindowBackgroundEffect::Maris => self.wallpaper_material && self.transparent_windows,
             WindowBackgroundEffect::Acrylic
             | WindowBackgroundEffect::Mica
             | WindowBackgroundEffect::MicaAlt
@@ -1792,6 +1804,18 @@ mod tests {
     #[test]
     fn parses_background_effect_values() {
         assert_eq!(
+            WindowBackgroundEffect::parse("luca"),
+            Some(WindowBackgroundEffect::Luca)
+        );
+        assert_eq!(
+            WindowBackgroundEffect::parse("niko"),
+            Some(WindowBackgroundEffect::Niko)
+        );
+        assert_eq!(
+            WindowBackgroundEffect::parse("maris"),
+            Some(WindowBackgroundEffect::Maris)
+        );
+        assert_eq!(
             WindowBackgroundEffect::parse("mica"),
             Some(WindowBackgroundEffect::Mica)
         );
@@ -1799,6 +1823,7 @@ mod tests {
             WindowBackgroundEffect::parse("under-window-background"),
             Some(WindowBackgroundEffect::UnderWindowBackground)
         );
+        assert_eq!(WindowBackgroundEffect::Luca.as_str(), "luca");
         assert_eq!(WindowBackgroundEffect::MicaAlt.as_str(), "mica-alt");
         assert!(WindowBackgroundEffect::Acrylic.requires_transparency());
         assert!(!WindowBackgroundEffect::None.requires_transparency());

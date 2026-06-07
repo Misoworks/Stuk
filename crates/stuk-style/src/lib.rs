@@ -134,9 +134,11 @@ impl Theme {
             Material::Window | Material::Maris => self.colors.window,
             Material::Sidebar => self.colors.sidebar,
             Material::Toolbar => self.colors.toolbar,
-            Material::Popover | Material::Menu | Material::Dialog | Material::Luca => {
-                self.colors.surface_elevated
-            }
+            Material::Popover
+            | Material::Menu
+            | Material::Dialog
+            | Material::Luca
+            | Material::Niko => self.colors.surface_elevated,
         }
     }
 
@@ -383,6 +385,7 @@ pub enum Material {
     Dialog,
     Maris,
     Luca,
+    Niko,
 }
 
 impl Material {

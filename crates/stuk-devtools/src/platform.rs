@@ -144,5 +144,6 @@ fn material_name(material: &Material) -> &'static str {
         Material::Dialog => "dialog",
         Material::Maris => "maris",
         Material::Luca => "luca",
+        Material::Niko => "niko",
     }
 }
