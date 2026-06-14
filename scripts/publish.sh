@@ -62,13 +62,88 @@ echo "publishing ${#CRATES[@]} stuk crates in dependency order:"
 printf '  - %s\n' "${CRATES[@]}"
 echo
 
+# Publish a single crate, retrying on crates.io 429 rate limits.
+#
+# Captures stderr/stdout. On a 429, parses the "try again after <RFC2822>" hint
+# from the error and sleeps until then (plus a small buffer) before retrying.
+# On any other failure, the captured output is echoed and the function returns
+# non-zero so the caller can abort.
+#
+# The default max attempts is high enough to ride out a multi-hour crates.io
+# rate-limit cooldown (which can be 30+ minutes for new accounts). Override
+# with STUK_PUBLISH_MAX_ATTEMPTS.
+publish_crate() {
+  local crate="$1"
+  local max_attempts="${STUK_PUBLISH_MAX_ATTEMPTS:-20}"
+  local attempt=0
+  local out status
+
+  while (( attempt < max_attempts )); do
+    attempt=$((attempt + 1))
+    echo "==> publishing $crate (attempt $attempt)"
+
+    set +e
+    out=$(cargo publish -p "$crate" "${CARGO_EXTRA[@]}" 2>&1)
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+      echo "$out"
+      # Let the crates.io index settle so the next crate can resolve its dep.
+      echo "waiting 30s for crates.io index to update..."
+      sleep 30
+      return 0
+    fi
+
+    # 429 from crates.io looks like:
+    #   ...status 429 Too Many Requests): You have published too many new
+    #   crates in a short period of time. Please try again after Sun, 14
+    #   Jun 2026 14:59:56 GMT and see...
+    if [[ "$out" == *"status 429"* ]]; then
+      local when
+      when=$(printf '%s' "$out" | grep -oP 'try again after \K[^.]+' | head -1 | sed 's/[[:space:]]*$//')
+      if [[ -n "$when" ]]; then
+        local epoch now wait wait_min wait_sec
+        epoch=$(date -d "$when" +%s 2>/dev/null || echo "")
+        if [[ -n "$epoch" ]]; then
+          now=$(date +%s)
+          wait=$((epoch - now + 15))
+          if (( wait > 0 )); then
+            wait_min=$((wait / 60))
+            wait_sec=$((wait % 60))
+            echo "rate limited until $when; sleeping ${wait_min}m${wait_sec}s before retry..."
+            sleep "$wait"
+            continue
+          fi
+        fi
+      fi
+      # 429 but couldn't parse the wait time — back off and retry.
+      echo "rate limited; backing off 60s before retry..."
+      sleep 60
+      continue
+    fi
+
+    # Version already on crates.io: treat as success so the script is
+    # idempotent and can be re-run safely to publish the crates that didn't
+    # make it on a previous attempt.
+    if [[ "$out" == *"already exists at version"* ]] \
+       || [[ "$out" == *"already exists"* && "$out" == *"at registry"* ]]; then
+      echo "$out"
+      echo "$crate is already on crates.io, skipping"
+      return 0
+    fi
+
+    # Non-rate-limit failure: surface the cargo output and bail.
+    echo "$out"
+    return "$status"
+  done
+
+  echo "gave up publishing $crate after $max_attempts attempts"
+  return 1
+}
+
 for crate in "${CRATES[@]}"; do
-  echo "==> publishing $crate"
-  cargo publish -p "$crate" "${CARGO_EXTRA[@]}"
-  # crates.io needs a moment for the index to refresh before the next crate
-  # can resolve its dep. Skip the wait on --dry-run.
-  echo "waiting 30s for crates.io index to update..."
-  sleep 30
+  publish_crate "$crate"
 done
 
 echo
