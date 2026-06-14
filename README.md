@@ -25,6 +25,32 @@ For a practical map of crate ownership, app structure, widgets, actions, setting
 materials, Fenestra integration, CLI flows, and implementation rules, see
 [`docs/implementation-guide.md`](docs/implementation-guide.md).
 
+## Install
+
+Seven low-level Stuk crates publish to crates.io independently. Most apps only need a few of these
+as building blocks (often pulled in transitively through [`fenestra-cef`](https://github.com/Misoworks/Fenestra)):
+
+```toml
+[dependencies]
+stuk-platform = "0.1"
+stuk-platform-shell = "0.1"
+stuk-render = "0.1"
+stuk-style = "0.1"
+stuk-layout = "0.1"
+stuk-actions = "0.1"
+stuk-accessibility = "0.1"
+```
+
+Or pin to git while iterating:
+
+```toml
+[dependencies]
+stuk-platform = { git = "https://github.com/Misoworks/Stuk", branch = "main" }
+```
+
+The full `stuk` app-framework facade and its high-level widget/text/devtools crates are not yet on
+crates.io; build them from this workspace if you need them.
+
 ## Run Examples
 
 ```sh
@@ -103,6 +129,34 @@ stuk dev
 cargo build --workspace
 cargo test --workspace
 ```
+
+## Publishing
+
+The seven publishable Stuk crates (`stuk-style`, `stuk-layout`, `stuk-platform-shell`,
+`stuk-actions`, `stuk-accessibility`, `stuk-render`, `stuk-platform`) ship from this repo.
+
+Releases run automatically through GitHub Actions and crates.io
+[trusted publishing](https://crates.io/docs/trusted-publishing). Push a tag and the
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml) workflow exchanges a short-lived
+OIDC token for a crates.io API token, then publishes every crate in dependency order:
+
+```sh
+# bump workspace.package.version in Cargo.toml first, then:
+git tag v0.1.1
+git push --tags
+```
+
+For the very first publish of a crate (or for local testing) use the script directly:
+
+```sh
+cargo login <CRATES_IO_TOKEN>
+scripts/publish.sh --dry-run    # sanity check
+scripts/publish.sh              # actual publish
+```
+
+After the first manual publish, configure a trusted publisher on crates.io
+(`Misoworks` / `Stuk` / `publish.yml` / environment `release`) for each crate so the workflow can
+take over.
 
 ## License
 

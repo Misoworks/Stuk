@@ -37,8 +37,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Lantharos/stuk"
-homepage = "https://github.com/Lantharos/stuk"
+repository = "https://github.com/Misoworks/Stuk"
+homepage = "https://github.com/Misoworks/Stuk"
 authors = ["The Stuk Authors"]
 
 [workspace.dependencies]
