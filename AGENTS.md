@@ -20,8 +20,11 @@
 - Devtools, inspector, preview, and bundle planning belong in `crates/stuk-devtools`.
 - CLI behavior belongs in `crates/stuk-cli`.
 - CEF-backed webview windows and shared web runtime management belong in the separate Fenestra repo.
-- Stuk integration for webviews belongs in Fenestra's `stuk-fenestra` adapter crate.
+- Apps use `FenestraWindow` from `fenestra-cef` directly; there is no longer a Stuk-side webview adapter.
+- The `stuk-style`, `stuk-layout`, `stuk-platform-shell`, `stuk-actions`, `stuk-accessibility`, `stuk-render`, and `stuk-platform` crates are published to crates.io from this repo so `fenestra-cef` can depend on them.
+- All other Stuk workspace members (including the umbrella `stuk` crate) are `publish = false`.
 - Integration tests live in `tests/integration/`.
 - Benchmarks live in `benches/`.
 - Prefer semantic materials (`Maris`, `Luca`, `Surface`) over hardcoded blur behavior.
 - Run `cargo fmt`, `cargo build --workspace`, and `cargo test --workspace` after code changes.
+- When publishing, use `scripts/publish.sh`. The seven publishable crates are listed there in dependency order.

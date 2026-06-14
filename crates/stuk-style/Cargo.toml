@@ -1,8 +1,15 @@
 [package]
 name = "stuk-style"
-version = "0.1.0"
+description = "Color, typography, and text styling primitives for the Stuk app framework"
+keywords = ["stuk", "ui", "style", "typography", "color"]
+categories = ["gui"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]

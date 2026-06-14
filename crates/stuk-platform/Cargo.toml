@@ -1,9 +1,16 @@
 [package]
 name = "stuk-platform"
-version = "0.1.0"
+description = "Cross-platform window, input, clipboard, tray, autostart, global-shortcut, and deep-link primitives for the Stuk app framework"
+keywords = ["stuk", "ui", "platform", "desktop", "window"]
+categories = ["gui", "os"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]
 pollster.workspace = true

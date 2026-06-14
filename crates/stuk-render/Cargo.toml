@@ -1,9 +1,16 @@
 [package]
 name = "stuk-render"
-version = "0.1.0"
+description = "GPU display-list renderer (wgpu + glyphon) used by the Stuk app framework"
+keywords = ["stuk", "ui", "renderer", "wgpu", "gpu"]
+categories = ["gui", "rendering"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]
 bytemuck.workspace = true

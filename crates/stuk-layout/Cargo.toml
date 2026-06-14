@@ -1,8 +1,15 @@
 [package]
 name = "stuk-layout"
-version = "0.1.0"
+description = "Layout primitives (sizes, edges, identifiers) for the Stuk app framework"
+keywords = ["stuk", "ui", "layout"]
+categories = ["gui"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]

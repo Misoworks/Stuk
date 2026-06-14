@@ -1,9 +1,16 @@
 [package]
 name = "stuk-accessibility"
-version = "0.1.0"
+description = "Accessibility tree primitives backed by AccessKit for the Stuk app framework"
+keywords = ["stuk", "ui", "accessibility", "accesskit"]
+categories = ["gui", "accessibility"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]
 accesskit.workspace = true

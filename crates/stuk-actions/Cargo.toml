@@ -1,9 +1,16 @@
 [package]
 name = "stuk-actions"
-version = "0.1.0"
+description = "Action, shortcut, and modifier primitives for the Stuk app framework"
+keywords = ["stuk", "ui", "actions", "shortcuts"]
+categories = ["gui"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]
 stuk-layout.workspace = true

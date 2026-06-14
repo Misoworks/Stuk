@@ -33,22 +33,26 @@ default-members = [
 ]
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/Lantharos/stuk"
+homepage = "https://github.com/Lantharos/stuk"
+authors = ["The Stuk Authors"]
 
 [workspace.dependencies]
-stuk = { path = "crates/stuk" }
-stuk-actions = { path = "crates/stuk-actions" }
+stuk = { path = "crates/stuk", version = "0.1.0" }
+stuk-actions = { path = "crates/stuk-actions", version = "0.1.0" }
 stuk-core = { path = "crates/stuk-core" }
 stuk-devtools = { path = "crates/stuk-devtools" }
-stuk-layout = { path = "crates/stuk-layout" }
-stuk-render = { path = "crates/stuk-render" }
-stuk-style = { path = "crates/stuk-style" }
+stuk-layout = { path = "crates/stuk-layout", version = "0.1.0" }
+stuk-render = { path = "crates/stuk-render", version = "0.1.0" }
+stuk-style = { path = "crates/stuk-style", version = "0.1.0" }
 stuk-text = { path = "crates/stuk-text" }
 stuk-widgets = { path = "crates/stuk-widgets" }
-stuk-platform = { path = "crates/stuk-platform" }
-stuk-platform-shell = { path = "crates/stuk-platform-shell" }
+stuk-platform = { path = "crates/stuk-platform", version = "0.1.0" }
+stuk-platform-shell = { path = "crates/stuk-platform-shell", version = "0.1.0" }
 stuk-platform-staccato = { path = "crates/stuk-platform-staccato" }
 stuk-platform-wayland = { path = "crates/stuk-platform-wayland" }
 stuk-platform-windows = { path = "crates/stuk-platform-windows" }
@@ -56,7 +60,7 @@ stuk-platform-macos = { path = "crates/stuk-platform-macos" }
 stuk-platform-android = { path = "crates/stuk-platform-android" }
 stuk-platform-ios = { path = "crates/stuk-platform-ios" }
 stuk-platform-web = { path = "crates/stuk-platform-web" }
-stuk-accessibility = { path = "crates/stuk-accessibility" }
+stuk-accessibility = { path = "crates/stuk-accessibility", version = "0.1.0" }
 stuk-settings = { path = "crates/stuk-settings" }
 stuk-manifest = { path = "crates/stuk-manifest" }
 

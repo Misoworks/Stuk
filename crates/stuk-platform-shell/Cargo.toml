@@ -1,9 +1,15 @@
 [package]
 name = "stuk-platform-shell"
-version = "0.1.0"
+description = "Shell-surface metadata (layer-shell anchors, margins, options) for Stuk and Fenestra platform integrations"
+keywords = ["stuk", "wayland", "layer-shell", "shell-surface"]
+categories = ["gui", "os::linux-apis"]
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Shell-surface metadata for Stuk platform integrations"
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 
 [dependencies]
