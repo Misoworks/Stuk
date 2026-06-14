@@ -40,10 +40,19 @@ if [[ -n "$DRY_RUN" || -n "$PACKAGE_ONLY" ]]; then
   echo "package-only run for ${#CRATES[@]} stuk crates:"
   printf '  - %s\n' "${CRATES[@]}"
   echo
+  # Package all crates in a single `cargo package` invocation. This is
+  # required: cargo only spins up the temporary overlay registry that lets
+  # it resolve workspace-internal deps against the in-progress publish when
+  # more than one package is being packaged in the same call (see the
+  # `do_package` function in cargo's `cargo_package` source — the overlay
+  # is gated on `deps.has_dependencies()`). Per-crate calls like
+  # `cargo package -p stuk-actions` would try to resolve `stuk-layout`
+  # against crates.io and fail because we haven't published it yet.
+  package_args=()
   for crate in "${CRATES[@]}"; do
-    echo "==> packaging $crate"
-    cargo package -p "$crate" "${CARGO_EXTRA[@]}"
+    package_args+=(-p "$crate")
   done
+  cargo package "${package_args[@]}" "${CARGO_EXTRA[@]}"
   echo
   echo "all stuk crates packaged. run without --dry-run/--package-only to publish."
   exit 0
